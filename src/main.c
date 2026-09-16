@@ -21,14 +21,25 @@ int main(int argc, char *argv[]) {
     char *lines[1000];
     char buf[1024];
     int count = 0;
+    int offset = 0;
+    int screen_height = 20;
+
     while (fgets(buf, sizeof(buf), file)) {
         lines[count] = strdup(buf);
         count++;
         // count = count + 1;
         // printf("%s", buf);
     }
+    while (offset < count) {
+        for (int i = offset; i < offset + screen_height && i < count; i++) {
+        printf("%d %s", i, lines[i]);
+    }
+    getchar();
+
+    offset += screen_height;
+    }
     // not read = not open
-    for (int i = 0; i<count; i++) {
+    for (int i = offset; i<offset + screen_height && i<count; i++) {
         printf("%d %s", i ,lines[i]);
     }
     fclose(file);
