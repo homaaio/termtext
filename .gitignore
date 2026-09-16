@@ -1,0 +1,8 @@
+*.o
+*.orig
+*.exe
+*.zip
+*.tar.gz
+*.tar.xz
+*.tar
+*.7z
