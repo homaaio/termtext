@@ -17,7 +17,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     char buf[99];
-    while (buf, sizeof(buf), file) {
+    while (fgets(buf, sizeof(buf), file)) {
         printf("%s", buf);
     }
     // not read = not open
