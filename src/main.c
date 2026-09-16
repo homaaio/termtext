@@ -11,14 +11,17 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    FILE *f = fopen(argv[1], "r");
-    if (f == NULL) {
+    FILE *file = fopen(argv[1], "r");
+    if (file == NULL) {
         perror("tt");
         return 1;
     }
-
+    char buf[99];
+    while (buf, sizeof(buf), file) {
+        printf("%s", buf);
+    }
     // not read = not open
-    fclose(f);
+    fclose(file);
 
     return 0;
 }
