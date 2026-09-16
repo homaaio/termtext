@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <string.h>
+#define MAX_LINES 1000
 
 // "tt <file_name>" command:
 
@@ -16,11 +18,19 @@ int main(int argc, char *argv[]) {
         perror("tt");
         return 1;
     }
-    char buf[99];
+    char *lines[1000];
+    char buf[1024];
+    int count = 0;
     while (fgets(buf, sizeof(buf), file)) {
-        printf("%s", buf);
+        lines[count] = strdup(buf);
+        count++;
+        // count = count + 1;
+        // printf("%s", buf);
     }
     // not read = not open
+    for (int i = 0; i<count; i++) {
+        printf("%d %s", i ,lines[i]);
+    }
     fclose(file);
 
     return 0;
