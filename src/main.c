@@ -7,10 +7,10 @@
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
-        fprintf(stderr, "usage `tt <file>` \n");
+        fprintf(stderr, "usage: tt <file>\n");
         return 1;
     } else if (argc >= 3) {
-        fprintf(stderr, "can't open 2 and more files \n");
+        fprintf(stderr, "can't open 2 and more files\n");
         return 1;
     }
 
@@ -25,28 +25,41 @@ int main(int argc, char *argv[]) {
     int offset = 0;
     int screen_height = 20;
 
+    while (fgets(buf, sizeof(buf), file)) {
+        if (count >= MAX_LINES) break;
+        buf[strcspn(buf, "\n")] = 0;
+        lines[count] = strdup(buf);
+        if (lines[count] == NULL) {
+            perror("strdup");
+            break;
+        }
+        count++;
+    }
+    fclose(file);
+
     struct termios orig;
     tcgetattr(STDIN_FILENO, &orig);
     struct termios raw = orig;
     cfmakeraw(&raw);
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
 
-    while (fgets(buf, sizeof(buf), file)) {
-        buf[strcspn(buf, "\n")] = 0;
-        lines[count] = strdup(buf);
-        count++;
-    }
-
     while (offset < count) {
         printf("\033[2J\033[H");
         for (int i = offset; i < offset + screen_height && i < count; i++) {
             printf("%d %s\r\n", i, lines[i]);
         }
-        getchar();
+
+        int c = getchar();
+        if (c == 'q') break;
+
         offset += screen_height;
     }
 
-    fclose(file);
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig);
+
+    for (int i = 0; i < count; i++) {
+        free(lines[i]);
+    }
+
     return 0;
 }
