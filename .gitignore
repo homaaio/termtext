@@ -1,0 +1,16 @@
+*.o
+*.orig
+*.exe
+*.zip
+*.tar.gz
+*.tar.xz
+*.tar
+*.7z
+tt
+tr
+editor
+*.txt
+*.deb
+test.*
+test
+hi.*
