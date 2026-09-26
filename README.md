@@ -16,6 +16,10 @@ system at all.
 - **Syntax highlighting** — a lightweight, keywords-and-literals-only
   highlighter for C/C++, Rust, Python and assembly; toggle it on/off in
   settings
+- **Smart brackets** — typing `(`, `[`, `{`, `"` or `'` auto-inserts the
+  matching partner (typing the closing character yourself just steps
+  over it instead of duplicating it), and the bracket matching the one
+  under the cursor is highlighted; toggle it on/off in settings
 - Save (`Ctrl+S`) and "save as" (`Ctrl+O`)
 - Status line for messages
 - Alternate screen — the terminal returns to its previous state on exit
@@ -25,11 +29,13 @@ system at all.
 ## Project layout
 
     src/main.c               editor logic, platform-independent
-    src/config.h              feature flags (FEATURE_HIGHLIGHT, FEATURE_SELECTION) and buffer limits
+    src/config.h              feature flags (FEATURE_HIGHLIGHT, FEATURE_SELECTION, FEATURE_BRACKETS) and buffer limits
     src/settings.c/h          core settings storage (~/.config/tt/settings.conf)
     src/settings_highlight.c/h  highlight on/off setting (only built if FEATURE_HIGHLIGHT=1)
     src/highlight.c/h         syntax highlighting (only built if FEATURE_HIGHLIGHT=1)
     src/selection.c/h         text selection + internal clipboard (only built if FEATURE_SELECTION=1)
+    src/settings_brackets.c/h   smart-brackets on/off setting (only built if FEATURE_BRACKETS=1)
+    src/brackets.c/h          smart brackets: auto-close + matching-bracket highlight (only built if FEATURE_BRACKETS=1)
     src/version.h             version string
     src/platform.h            platform interface (plat_*)
     src/plat_unix.c           Linux/macOS implementation (termios + ANSI)
@@ -50,24 +56,26 @@ for your specific chip. See "Running without an OS" below.
 
 ## Modules and binary size
 
-Syntax highlighting and text selection are each a self-contained module
-that can be left out of the build entirely — not just disabled at
-runtime, but not compiled or linked in at all, so its keyword tables,
-buffer-copy logic and clipboard don't take up space in the binary:
+Syntax highlighting, text selection and smart brackets are each a
+self-contained module that can be left out of the build entirely — not
+just disabled at runtime, but not compiled or linked in at all, so its
+keyword tables, buffer-copy logic or clipboard don't take up space in
+the binary:
 
     make tt FEATURE_HIGHLIGHT=0                       # no syntax highlighting
     make tt FEATURE_SELECTION=0                       # no selection / clipboard
-    make minimal                                      # both off — same as above combined
+    make tt FEATURE_BRACKETS=0                        # no smart brackets
+    make minimal                                      # all three off — same as above combined
     make tiny                                         # minimal + -Os + dead-code stripping
 
 Feature flags default to `1` (see `src/config.h`) and are passed to the
 compiler with `-D`, so `#if FEATURE_HIGHLIGHT` / `#if FEATURE_SELECTION`
-blocks compile away cleanly on either side. On this machine, a release
-build of `tt` came out at roughly:
+/ `#if FEATURE_BRACKETS` blocks compile away cleanly on either side. On
+this machine, a release build of `tt` came out at roughly:
 
 | Build             | Size (unix, gcc -O2) |
 |-------------------|-----------------------|
-| `make unix` (full)| ~46 KB |
+| `make unix` (full)| ~47 KB |
 | `make minimal`    | ~27 KB |
 | `make tiny`        | ~18 KB |
 
@@ -123,7 +131,11 @@ If the file does not exist, it will be created on first save.
 | `Ctrl+Y` | Scroll up |
 | `Ctrl+Q` | Quit |
 
-Selection is anchored where you first press `Shift`+Arrow and follows the
+Typing `(`, `[`, `{`, `"` or `'` auto-inserts its closing partner and
+leaves the cursor between them (`FEATURE_BRACKETS`); typing the closing
+character yourself right before an auto-inserted one just moves past it
+instead of adding a duplicate. Selection is anchored where you first
+press `Shift`+Arrow and follows the
 cursor from there; any other key (besides `Ctrl+C`/`Ctrl+X`, which act on
 it) clears it. The clipboard is internal to termtext, not the OS
 clipboard — this is what lets cut/copy/paste work identically on unix,
@@ -145,20 +157,44 @@ Settings are stored in `~/.config/tt/settings.conf` (or
 | `lines`        | `true`/`false`  | `true`  | Show line numbers in the left margin |
 | `cursor_blink` | `true`/`false`  | `true`  | Blinking terminal cursor |
 | `highlight`    | `true`/`false`  | `true`  | Syntax highlighting on/off (only present if built with `FEATURE_HIGHLIGHT=1`) |
+| `smart_brackets` | `true`/`false` | `true` | Auto-close bracket/quote pairs + matching-bracket highlight (only present if built with `FEATURE_BRACKETS=1`) |
 
 Syntax highlighting is picked per file by its extension (`.c/.h/.cpp/.hpp`
 → C/C++, `.rs` → Rust, `.py` → Python, `.s/.asm` → assembly); anything
 else is shown unhighlighted. It recognizes keywords, a handful of basic
-types, string/char literals, numbers, line comments and (for C/C++)
-preprocessor lines — enough to break up a wall of monochrome text without
-being a real parser. It does not track constructs across lines (e.g. a
-C-style block comment spanning several lines will not be colored
-correctly past its first line) — a deliberate "20% effort, 80% of the
-visual benefit" tradeoff rather than a full-blown syntax engine.
+types, string/char literals (with escape sequences like `\n`/`\t`/`\xFF`
+picked out in their own color), numbers (including `0x` hex, `_` digit
+separators and exponents), line comments and (for C/C++) preprocessor
+lines — only the `#`+directive word is colored there, so the rest of the
+line (a macro's value, a quoted or `<angle-bracket>` `#include` path,
+a trailing comment) still gets its own normal colors instead of the
+whole line turning into one flat color. It does not track constructs
+across lines (e.g. a C-style block comment spanning several lines will
+not be colored correctly past its first line) — a deliberate "20%
+effort, 80% of the visual benefit" tradeoff rather than a full-blown
+syntax engine.
+
+## Smart brackets
+
+`FEATURE_BRACKETS` (`src/brackets.c/h` + `src/settings_brackets.c/h`)
+auto-closes `(`, `[`, `{`, `"` and `'`: typing one inserts its partner
+right after the cursor (only when the cursor is at end of line or before
+a non-word character, so it doesn't get in the way while editing inside
+existing text), and typing the closing character yourself right before
+an auto-inserted one steps over it instead of duplicating it. It also
+highlights, in yellow, the bracket matching the one the cursor is
+currently on (`( ) { } [ ]` only — quote characters don't have a
+well-defined "matching" partner the way nested brackets do). Like the
+syntax highlighter, matching is done by scanning the buffer and counting
+nesting depth; it doesn't know about strings or comments, so a stray
+bracket character inside a string or comment can throw off the count —
+the same "good enough, not a full parser" tradeoff made elsewhere in this
+project.
 
 ## Running without an OS
 
-termtext's core (`main.c`, `settings.c`, `highlight.c`, `selection.c`) is
+termtext's core (`main.c`, `settings.c`, `highlight.c`, `selection.c`,
+`brackets.c`) is
 plain, freestanding-friendly C: it never talks to the terminal, a
 filesystem driver, or any OS service directly. Every place it needs to
 touch actual hardware — the screen, the keyboard/buttons, colors — it
@@ -189,8 +225,11 @@ from you. What it already gives you:
   real hardware access belongs (SPI/display init, GPIO setup, character
   drawing, button debouncing).
 - `plat_set_color()` wired in as a hook: fill in a `PLAT_COLOR_*` → RGB
-  color table and use it in `plat_putc()` if you want highlighting on the
-  device (or leave it a no-op and build with `FEATURE_HIGHLIGHT=0`).
+  color table (don't forget `PLAT_COLOR_ESCAPE` and
+  `PLAT_COLOR_BRACKET_MATCH` alongside the syntax-highlighting colors,
+  if those modules are enabled) and use it in `plat_putc()` if you want
+  highlighting on the device (or leave it a no-op and build with
+  `FEATURE_HIGHLIGHT=0 FEATURE_BRACKETS=0`).
 - A comment at `BTN_ENTER` sketching how to add a "Shift" equivalent
   (e.g. a long-press) if you want selection on a buttons-only device —
   otherwise build with `FEATURE_SELECTION=0` and skip it.
@@ -217,9 +256,10 @@ To bring up a real port:
    file? nothing, RAM-only?) and adjust the two `fopen` call sites in
    `main.c` accordingly if you don't have a real filesystem.
 5. Build with the modules you actually want (`FEATURE_HIGHLIGHT`,
-   `FEATURE_SELECTION`) — see "Modules and binary size" — since flash
-   space is usually at more of a premium on a microcontroller than on a
-   PC. `make mcu` builds with both off as a sane starting point.
+   `FEATURE_SELECTION`, `FEATURE_BRACKETS`) — see "Modules and binary
+   size" — since flash space is usually at more of a premium on a
+   microcontroller than on a PC. `make mcu` builds with all three off as
+   a sane starting point.
 
 None of this is hidden behind abstractions you'd need to reverse-engineer
 first: `platform.h` is under 60 lines, and everything a port needs to
@@ -228,6 +268,8 @@ implement is listed there with a one-line comment each.
 ## Known limitations
 
 - Syntax highlighting is per-line and stateless — see "Settings" above.
+- Bracket matching doesn't know about strings/comments either — see
+  "Smart brackets" above.
 - Selection extends by character/line, not by word; there's no
   select-all shortcut.
 - The internal clipboard holds one item and is not shared with the
