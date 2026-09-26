@@ -149,7 +149,8 @@ void draw(int cx, int cy, int offset, const char *filename) {
         int len = strlen(lines[i]);
 
         if (settings.show_lines) {
-            snprintf(buf, sizeof(buf), "%*d ~ ", w, i + 1);
+            if (w > 20) w = 20;
+                snprintf(buf, sizeof(buf), "%*d ~ ", w, i + 1);
             put_str(buf);
         }
 
