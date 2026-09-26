@@ -3,11 +3,16 @@
 #include <stdio.h>
 #include "config.h"
 #include "find.h"
+#if FEATURE_UNDO
+#include "undo.h"
+#endif
 
 /* The editor's line buffer — defined in main.c. */
 extern char *lines[MAX_LINES];
 extern int   count;
 extern int   modified;
+extern int   cx;
+extern int   cy;
 
 static char last_query[128] = "";
 
@@ -92,6 +97,9 @@ int find_replace_all(const char *query, const char *replacement) {
         }
         *dst = 0;
 
+#if FEATURE_UNDO
+        undo_record_line_changed(i, lines[i], cy, cx);
+#endif
         free(lines[i]);
         lines[i] = out;
         total += occ;

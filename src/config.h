@@ -13,7 +13,8 @@
  *   make tt FEATURE_SELECTION=0                                       # no selection / clipboard
  *   make tt FEATURE_BRACKETS=0                                        # no smart brackets
  *   make tt FEATURE_FIND=0                                            # no find / find & replace
- *   make tt FEATURE_HIGHLIGHT=0 FEATURE_SELECTION=0 FEATURE_BRACKETS=0 FEATURE_FIND=0 # minimal build (see `make minimal`)
+ *   make tt FEATURE_UNDO=0                                            # no undo
+ *   make tt FEATURE_HIGHLIGHT=0 FEATURE_SELECTION=0 FEATURE_BRACKETS=0 FEATURE_FIND=0 FEATURE_UNDO=0 # minimal build (see `make minimal`)
  *
  * The values below are what you get building with no parameters
  * (make tt), or opening the project in an IDE that doesn't know about
@@ -37,6 +38,10 @@
 #define FEATURE_FIND 1        /* find (Ctrl+F) and find & replace (Ctrl+H): src/find.c */
 #endif
 
+#ifndef FEATURE_UNDO
+#define FEATURE_UNDO 1        /* undo (Ctrl+Z): src/undo.c */
+#endif
+
 /*
  * Editor buffer limits. On PC (unix/win) the default values aren't
  * critical. When porting to a microcontroller (see plat_mcu.c and the
@@ -51,6 +56,16 @@
 #endif
 #ifndef MAX_LEN
 #define MAX_LEN 1024
+#endif
+
+/*
+ * Undo history depth (src/undo.c, only present if FEATURE_UNDO=1): a
+ * fixed-size ring buffer of this many line-edit steps, so undo depth is
+ * bounded rather than growing with the file. Overridden the same way as
+ * MAX_LINES/MAX_LEN, via -D — shrink it on a memory-constrained target.
+ */
+#ifndef UNDO_MAX
+#define UNDO_MAX 300
 #endif
 
 #endif

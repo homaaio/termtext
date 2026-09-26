@@ -2,6 +2,9 @@
 #include <string.h>
 #include "config.h"
 #include "selection.h"
+#if FEATURE_UNDO
+#include "undo.h"
+#endif
 
 /* The editor's line buffer — defined in main.c. */
 extern char *lines[MAX_LINES];
@@ -56,6 +59,9 @@ void sel_delete(int *cy, int *cx) {
     if (y0 == y1) {
         char *line = lines[y0];
         int len = strlen(line);
+#if FEATURE_UNDO
+        undo_record_line_changed(y0, line, *cy, *cx);
+#endif
         memmove(line + x0, line + x1, len - x1 + 1);
     } else {
         char *first = lines[y0];
@@ -65,12 +71,18 @@ void sel_delete(int *cy, int *cx) {
         int new_len = first_keep + (last_len - x1);
         char *merged = malloc(new_len + 1);
         if (merged != NULL) {
+#if FEATURE_UNDO
+            undo_record_line_changed(y0, first, *cy, *cx);
+#endif
             memcpy(merged, first, first_keep);
             memcpy(merged + first_keep, last + x1, last_len - x1 + 1); /* + '\0' */
             free(lines[y0]);
             lines[y0] = merged;
         }
         for (int i = y1; i > y0; i--) {
+#if FEATURE_UNDO
+            undo_record_line_deleted(i, lines[i], *cy, *cx);
+#endif
             delete_line(i);
         }
     }

@@ -19,6 +19,9 @@
 #if FEATURE_FIND
 #include "find.h"
 #endif
+#if FEATURE_UNDO
+#include "undo.h"
+#endif
 
 char *lines[MAX_LINES];
 int count = 0;
@@ -90,6 +93,9 @@ void delete_line(int at) {
 void insert_char(int c) {
     int len = strlen(lines[cy]);
     if (len + 1 >= MAX_LEN) return;
+#if FEATURE_UNDO
+    undo_record_line_changed(cy, lines[cy], cy, cx);
+#endif
     char *newl = malloc(len + 2);
     if (newl == NULL) return;
     memcpy(newl, lines[cy], cx);
@@ -116,8 +122,14 @@ static void paste_text(const char *text) {
         if (count < MAX_LINES) {
             char *rest = strdup(lines[cy] + cx);
             if (rest != NULL) {
+#if FEATURE_UNDO
+                undo_record_line_changed(cy, lines[cy], cy, cx);
+#endif
                 lines[cy][cx] = 0;
                 insert_line(cy + 1, rest);
+#if FEATURE_UNDO
+                undo_record_line_inserted(cy + 1, cy, cx);
+#endif
                 cy++;
                 cx = 0;
             }
@@ -346,6 +358,12 @@ int main(int argc, char *argv[]) {
         if (c != 17) quit_pending = 0; /* anything other than Ctrl+Q cancels a pending quit confirmation */
         len = strlen(lines[cy]);
 
+#if FEATURE_UNDO
+        /* One step per handled key — however many line ops this key
+         * goes on to record (if any), they'll all undo together. */
+        undo_next_step();
+#endif
+
 #if FEATURE_SELECTION
         int is_shift_move = (c == PLAT_KEY_SHIFT_UP || c == PLAT_KEY_SHIFT_DOWN ||
                               c == PLAT_KEY_SHIFT_RIGHT || c == PLAT_KEY_SHIFT_LEFT);
@@ -383,6 +401,23 @@ int main(int argc, char *argv[]) {
 #endif
                 if (save_current()) set_status("Saved as new file");
             }
+        } else if (c == 7) {
+            /* Ctrl+G — go to line */
+            char buf[32];
+            if (prompt("Go to line: ", buf, sizeof(buf)) && buf[0]) {
+                int target = atoi(buf);
+                if (target >= 1 && target <= count) {
+                    cy = target - 1;
+                    cx = 0;
+                } else {
+                    set_status("Line out of range");
+                }
+            }
+#if FEATURE_UNDO
+        } else if (c == 26) {
+            /* Ctrl+Z — undo the most recent step */
+            set_status(undo_perform(&cy, &cx) ? "Undo" : "Nothing to undo");
+#endif
 #if FEATURE_SELECTION
         } else if (c == 3) {
             /* Ctrl+C — copy selection to the OS clipboard, so it's
@@ -502,6 +537,9 @@ int main(int argc, char *argv[]) {
             } else
 #endif
             if (cx > 0) {
+#if FEATURE_UNDO
+                undo_record_line_changed(cy, lines[cy], cy, cx);
+#endif
                 memmove(&lines[cy][cx - 1], &lines[cy][cx], len - cx + 1);
                 cx--;
                 modified = 1;
@@ -512,6 +550,10 @@ int main(int argc, char *argv[]) {
                 if (merged == NULL) continue;
                 strcpy(merged, lines[cy - 1]);
                 strcat(merged, lines[cy]);
+#if FEATURE_UNDO
+                undo_record_line_changed(cy - 1, lines[cy - 1], cy, cx);
+                undo_record_line_deleted(cy, lines[cy], cy, cx);
+#endif
                 free(lines[cy - 1]);
                 lines[cy - 1] = merged;
                 delete_line(cy);
@@ -526,8 +568,14 @@ int main(int argc, char *argv[]) {
             if (count >= MAX_LINES) continue;
             char *rest = strdup(lines[cy] + cx);
             if (rest == NULL) continue;
+#if FEATURE_UNDO
+            undo_record_line_changed(cy, lines[cy], cy, cx);
+#endif
             lines[cy][cx] = 0;
             insert_line(cy + 1, rest);
+#if FEATURE_UNDO
+            undo_record_line_inserted(cy + 1, cy, cx);
+#endif
             cy++;
             cx = 0;
             modified = 1;
