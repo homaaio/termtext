@@ -55,6 +55,20 @@ int  plat_read_key(void); /* plain characters — as-is, arrows — constants be
 #define PLAT_KEY_ESC   27
 
 /*
+ * Optional OS clipboard access — layered on top of the internal
+ * clipboard in selection.c (see FEATURE_SELECTION) so Ctrl+C/X/V in
+ * main.c can also interoperate with text copied outside the program.
+ * Not every platform has a system clipboard (there's obviously nothing
+ * to talk to on a bare-metal MCU build, and on unix it depends on an
+ * external helper tool being installed): plat_clipboard_get() returns
+ * NULL when unavailable/empty, and the caller falls back to the
+ * internal clipboard; plat_clipboard_set() silently no-ops in that
+ * case, since the internal clipboard already has the text.
+ */
+void  plat_clipboard_set(const char *text);
+char *plat_clipboard_get(void); /* malloc'd (caller frees), or NULL */
+
+/*
  * Shift-held arrows — used by the text-selection module (see
  * FEATURE_SELECTION in config.h and src/selection.c). If the selection
  * module is disabled, main.c just treats them as plain arrows, so
