@@ -13,6 +13,7 @@ PLAT ?= unix
 FEATURE_HIGHLIGHT ?= 1
 FEATURE_SELECTION ?= 1
 FEATURE_BRACKETS ?= 1
+FEATURE_FIND ?= 1
 
 # Extra compiler flags for fine-tuning (buffer limits, flags for a
 # specific MCU, etc.), see config.h and the README ("Running without an
@@ -20,7 +21,7 @@ FEATURE_BRACKETS ?= 1
 #   make tt PLAT=mcu EXTRA_CFLAGS="-DMAX_LINES=200 -DMAX_LEN=128 -Os"
 EXTRA_CFLAGS ?=
 
-FEATURE_FLAGS = -DFEATURE_HIGHLIGHT=$(FEATURE_HIGHLIGHT) -DFEATURE_SELECTION=$(FEATURE_SELECTION) -DFEATURE_BRACKETS=$(FEATURE_BRACKETS)
+FEATURE_FLAGS = -DFEATURE_HIGHLIGHT=$(FEATURE_HIGHLIGHT) -DFEATURE_SELECTION=$(FEATURE_SELECTION) -DFEATURE_BRACKETS=$(FEATURE_BRACKETS) -DFEATURE_FIND=$(FEATURE_FIND)
 ALL_CFLAGS = $(CFLAGS) $(FEATURE_FLAGS) $(EXTRA_CFLAGS)
 
 SRC = src/main.c src/settings.c src/plat_$(PLAT).c
@@ -41,6 +42,11 @@ SRC += src/brackets.c src/settings_brackets.c
 COMMON_DEPS += src/brackets.h src/settings_brackets.h
 endif
 
+ifeq ($(FEATURE_FIND),1)
+SRC += src/find.c
+COMMON_DEPS += src/find.h
+endif
+
 tt: $(SRC) $(COMMON_DEPS)
 	$(CC) $(ALL_CFLAGS) -o tt $(SRC)
 
@@ -55,17 +61,17 @@ win: ; $(MAKE) tt PLAT=win CC=x86_64-w64-mingw32-gcc
 # MCUs are better off with a compact binary anyway; enable them
 # explicitly if needed (FEATURE_HIGHLIGHT=1 FEATURE_SELECTION=1
 # FEATURE_BRACKETS=1).
-mcu: ; $(MAKE) tt PLAT=mcu FEATURE_HIGHLIGHT=0 FEATURE_SELECTION=0 FEATURE_BRACKETS=0
+mcu: ; $(MAKE) tt PLAT=mcu FEATURE_HIGHLIGHT=0 FEATURE_SELECTION=0 FEATURE_BRACKETS=0 FEATURE_FIND=0
 
 # Minimal PC build: all three optional modules off — the smallest
 # binary that still edits text.
-minimal: ; $(MAKE) tt FEATURE_HIGHLIGHT=0 FEATURE_SELECTION=0 FEATURE_BRACKETS=0
+minimal: ; $(MAKE) tt FEATURE_HIGHLIGHT=0 FEATURE_SELECTION=0 FEATURE_BRACKETS=0 FEATURE_FIND=0
 
 # Same, but with extra size optimization and dead-code removal at link
 # time — usually a noticeable win on top of just disabling the modules.
 tiny:
 	$(MAKE) tt EXTRA_CFLAGS="-Os -ffunction-sections -fdata-sections" \
-	           FEATURE_HIGHLIGHT=0 FEATURE_SELECTION=0 FEATURE_BRACKETS=0 \
+	           FEATURE_HIGHLIGHT=0 FEATURE_SELECTION=0 FEATURE_BRACKETS=0 FEATURE_FIND=0 \
 	           CFLAGS="-Wall -Wl,--gc-sections -s"
 
 install: tt
