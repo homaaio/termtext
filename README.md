@@ -19,6 +19,9 @@ system at all.
 - **Find (`Ctrl+F`) and find & replace (`Ctrl+H`)** — plain-text search,
   wrapping around the document; find & replace reuses the same search
   and replaces every match in one go
+- **Undo (`Ctrl+Z`)** — reverts typing, deleting, splitting/joining
+  lines, cut/paste and find & replace, one action at a time
+- **Go to line (`Ctrl+G`)** — jump straight to a line number
 - **Syntax highlighting** — a lightweight, keywords-and-literals-only
   highlighter for C/C++, Rust, Python and assembly; toggle it on/off in
   settings
@@ -45,6 +48,7 @@ system at all.
     src/settings_brackets.c/h   smart-brackets on/off setting (only built if FEATURE_BRACKETS=1)
     src/brackets.c/h          smart brackets: auto-close + matching-bracket highlight (only built if FEATURE_BRACKETS=1)
     src/find.c/h              find + find & replace (only built if FEATURE_FIND=1)
+    src/undo.c/h              undo history (only built if FEATURE_UNDO=1)
     src/version.h             version string
     src/platform.h            platform interface (plat_*), including the optional OS clipboard hooks
     src/plat_unix.c           Linux/macOS implementation (termios + ANSI); OS clipboard via wl-copy/xclip/xsel/pbcopy, whichever is installed
@@ -75,19 +79,20 @@ the binary:
     make tt FEATURE_SELECTION=0                       # no selection / clipboard
     make tt FEATURE_BRACKETS=0                        # no smart brackets
     make tt FEATURE_FIND=0                            # no find / find & replace
-    make minimal                                      # all four off — same as above combined
+    make tt FEATURE_UNDO=0                            # no undo
+    make minimal                                      # all modules off — same as above combined
     make tiny                                         # minimal + -Os + dead-code stripping
 
 Feature flags default to `1` (see `src/config.h`) and are passed to the
 compiler with `-D`, so `#if FEATURE_HIGHLIGHT` / `#if FEATURE_SELECTION`
-/ `#if FEATURE_BRACKETS` / `#if FEATURE_FIND` blocks compile away cleanly
-on either side. On this machine, a release build of `tt` came out at
-roughly:
+/ `#if FEATURE_BRACKETS` / `#if FEATURE_FIND` / `#if FEATURE_UNDO` blocks
+compile away cleanly on either side. On this machine, a release build of
+`tt` came out at roughly:
 
 | Build             | Size (unix, gcc -O2) |
 |-------------------|-----------------------|
-| `make unix` (full)| ~47 KB |
-| `make minimal`    | ~27 KB |
+| `make unix` (full)| ~55 KB |
+| `make minimal`    | ~31 KB |
 | `make tiny`        | ~18 KB |
 
 Exact numbers depend on your compiler, libc and platform — use
@@ -102,7 +107,8 @@ useful for the buffer limits described next:
 `MAX_LINES` and `MAX_LEN` (also in `src/config.h`) bound the editor's
 static line buffer; the PC defaults (1000 lines × 1024 bytes) are
 generous, but on a memory-constrained target you'll want to shrink them
-(see below).
+(see below). `UNDO_MAX` (default 300) similarly bounds how many undo
+steps are kept in memory (only relevant if built with `FEATURE_UNDO=1`).
 
 ## Install
 
@@ -138,6 +144,8 @@ If the file does not exist, it will be created on first save.
 | `Ctrl+V` | Paste — OS clipboard if available and non-empty, else the internal one |
 | `Ctrl+F` | Find (prompts for text; empty input repeats the last search) |
 | `Ctrl+H` | Find & replace (prompts for text, then replacement; replaces every match) |
+| `Ctrl+G` | Go to line (prompts for a line number) |
+| `Ctrl+Z` | Undo the last action (`FEATURE_UNDO`) |
 | `Ctrl+S` | Save |
 | `Ctrl+O` | Save as (prompts for name) |
 | `Ctrl+E` | Scroll down |
@@ -214,10 +222,24 @@ bracket character inside a string or comment can throw off the count —
 the same "good enough, not a full parser" tradeoff made elsewhere in this
 project.
 
+## Undo
+
+`FEATURE_UNDO` (`src/undo.c/h`) keeps a history of line-level edits —
+typing, deleting, splitting/joining lines, cut/paste and find & replace
+all record what a line looked like right before they touched it. Every
+key you press that changes the buffer becomes its own undo step, however
+many individual line changes it involves internally (a paste, a
+replace-all), so `Ctrl+Z` reverts one logical action at a time rather
+than one character at a time. History is a fixed-size ring buffer
+(`UNDO_MAX` steps, default 300, see `src/config.h`) — once full, the
+oldest steps are dropped, so undo depth is bounded rather than growing
+with the file. There's no redo (a `Ctrl+Z` that's gone too far can't be
+brought back yet).
+
 ## Running without an OS
 
 termtext's core (`main.c`, `settings.c`, `highlight.c`, `selection.c`,
-`brackets.c`, `find.c`) is
+`brackets.c`, `find.c`, `undo.c`) is
 plain, freestanding-friendly C: it never talks to the terminal, a
 filesystem driver, or any OS service directly. Every place it needs to
 touch actual hardware — the screen, the keyboard/buttons, colors — it
@@ -279,10 +301,10 @@ To bring up a real port:
    file? nothing, RAM-only?) and adjust the two `fopen` call sites in
    `main.c` accordingly if you don't have a real filesystem.
 5. Build with the modules you actually want (`FEATURE_HIGHLIGHT`,
-   `FEATURE_SELECTION`, `FEATURE_BRACKETS`, `FEATURE_FIND`) — see
-   "Modules and binary
+   `FEATURE_SELECTION`, `FEATURE_BRACKETS`, `FEATURE_FIND`,
+   `FEATURE_UNDO`) — see "Modules and binary
    size" — since flash space is usually at more of a premium on a
-   microcontroller than on a PC. `make mcu` builds with all three off as
+   microcontroller than on a PC. `make mcu` builds with all of them off as
    a sane starting point.
 
 None of this is hidden behind abstractions you'd need to reverse-engineer
@@ -304,4 +326,6 @@ implement is listed there with a one-line comment each.
 - Find and find & replace do plain substring matching only — no regular
   expressions, no case-insensitive option, and find & replace always
   replaces every match in the file rather than confirming one at a time.
+- Undo has no redo counterpart, and history is capped at `UNDO_MAX`
+  steps (default 300) — very old steps age out on a long editing session.
 - `plat_mcu.c` is a template, not a tested driver for any specific board.
