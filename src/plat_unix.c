@@ -19,12 +19,12 @@ int plat_init(void) {
     cfmakeraw(&raw);
     if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) return 0;
 
-    /* В Linux-консоли (TERM=linux) альтернативный экран не поддерживается */
+    /* The Linux console (TERM=linux) doesn't support the alt screen */
     const char *term = getenv("TERM");
     use_altscreen = (term != NULL && strcmp(term, "linux") != 0);
     if (use_altscreen) printf("\033[?1049h");
 
-    printf("\033]12;#ffffff\033\\"); /* цвет курсора, если терминал поддерживает */
+    printf("\033]12;#ffffff\033\\"); /* cursor color, if the terminal supports it */
     plat_set_cursor_style(settings.cursor_blink);
     fflush(stdout);
     return 1;
@@ -72,13 +72,15 @@ void plat_set_inverse(int on) {
 
 void plat_set_color(int color) {
     switch (color) {
-        case PLAT_COLOR_KEYWORD: printf("\033[94m"); break;
-        case PLAT_COLOR_TYPE:    printf("\033[96m"); break;
-        case PLAT_COLOR_STRING:  printf("\033[92m"); break;
-        case PLAT_COLOR_COMMENT: printf("\033[90m"); break;
-        case PLAT_COLOR_NUMBER:  printf("\033[93m"); break;
-        case PLAT_COLOR_PREPROC: printf("\033[95m"); break;
-        default:                 printf("\033[39m"); break;
+        case PLAT_COLOR_KEYWORD:       printf("\033[94m"); break;
+        case PLAT_COLOR_TYPE:          printf("\033[96m"); break;
+        case PLAT_COLOR_STRING:        printf("\033[92m"); break;
+        case PLAT_COLOR_COMMENT:       printf("\033[32m"); break;
+        case PLAT_COLOR_NUMBER:        printf("\033[93m"); break;
+        case PLAT_COLOR_PREPROC:       printf("\033[95m"); break;
+        case PLAT_COLOR_ESCAPE:        printf("\033[36m"); break;
+        case PLAT_COLOR_BRACKET_MATCH: printf("\033[33m"); break;
+        default:                       printf("\033[39m"); break;
     }
 }
 
@@ -109,7 +111,7 @@ int plat_read_key(void) {
         if (c2 == 'C') return PLAT_KEY_RIGHT;
         if (c2 == 'D') return PLAT_KEY_LEFT;
         if (c2 == '1') {
-            /* CSI 1 ; <mod> <letter> — стрелка с модификатором (Shift/Ctrl/...) */
+            /* CSI 1 ; <mod> <letter> — arrow with a modifier (Shift/Ctrl/...) */
             int c3 = getchar(); /* ';' */
             if (c3 == ';') {
                 int mod = getchar();   /* '2' = Shift */
@@ -124,5 +126,5 @@ int plat_read_key(void) {
         }
         return PLAT_KEY_ESC;
     }
-    return c; /* русские буквы в UTF-8 приходят двумя байтами — main.c это учитывает */
+    return c; /* Cyrillic letters arrive as two UTF-8 bytes — main.c accounts for this */
 }

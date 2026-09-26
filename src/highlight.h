@@ -2,11 +2,11 @@
 #define HIGHLIGHT_H
 
 /*
- * highlight.h/.c — модуль подсветки синтаксиса (FEATURE_HIGHLIGHT в
- * config.h). Простой построчный токенайзер: многострочные комментарии
- * (например, блочные комментарии C/C++/Rust) не отслеживаются между
- * строками — сознательный компромисс "20% усилий -> 80% красоты",
- * которого просил заказчик, а не полноценный парсер языка.
+ * highlight.h/.c — syntax highlighting module (FEATURE_HIGHLIGHT in
+ * config.h). A simple line-by-line tokenizer: multi-line comments
+ * (e.g. C/C++/Rust block comments) aren't tracked across lines — a
+ * deliberate "20% effort -> 80% nice-looking" tradeoff the client
+ * asked for, not a full language parser.
  */
 
 typedef enum {
@@ -17,12 +17,13 @@ typedef enum {
     LANG_ASM
 } Lang;
 
-/* Определяет язык по расширению имени файла. LANG_NONE, если не распознано
- * или расширения нет — в этом случае подсветка просто не применяется. */
+/* Detects the language from the file name's extension. LANG_NONE if not
+ * recognized or there's no extension — in that case highlighting is
+ * simply not applied. */
 Lang highlight_detect_lang(const char *filename);
 
-/* Заполняет out_colors[0..len-1] значениями PLAT_COLOR_* для каждого
- * символа строки line (len должен равняться strlen(line)). */
+/* Fills out_colors[0..len-1] with PLAT_COLOR_* values for each
+ * character of line (len must equal strlen(line)). */
 void highlight_line(Lang lang, const char *line, int *out_colors, int len);
 
 #endif

@@ -12,6 +12,10 @@
 #if FEATURE_SELECTION
 #include "selection.h"
 #endif
+#if FEATURE_BRACKETS
+#include "brackets.h"
+#include "settings_brackets.h"
+#endif
 
 char *lines[MAX_LINES];
 int count = 0;
@@ -33,8 +37,9 @@ void set_status(const char *s) {
     snprintf(status, sizeof(status), "%s", s);
 }
 
-/* Вывести строку через платформенный plat_putc посимвольно.
- * Не часть platform.h — просто удобная обёртка поверх примитива. */
+/* Print a string through the platform's plat_putc, one character at a
+ * time. Not part of platform.h — just a convenience wrapper over the
+ * primitive. */
 static void put_str(const char *s) {
     while (*s) plat_putc(*s++);
 }
@@ -94,9 +99,9 @@ void insert_char(int c) {
 }
 
 #if FEATURE_SELECTION
-/* Вставляет (возможно многострочный) текст в позицию курсора — используется
- * для Ctrl+V. Переиспользует insert_char для символов и повторяет логику
- * разбиения строки из обработчика Enter для переносов строк. */
+/* Inserts (possibly multi-line) text at the cursor position — used for
+ * Ctrl+V. Reuses insert_char for characters and repeats the line-split
+ * logic from the Enter handler for newlines. */
 static void paste_text(const char *text) {
     if (text == NULL) return;
     const char *p = text;
@@ -126,12 +131,20 @@ void draw(int cx, int cy, int offset, const char *filename) {
     static int colors[MAX_LEN];
     int hl_on = hl_settings.enabled && cur_lang != LANG_NONE;
 #endif
+#if FEATURE_BRACKETS
+    int br_match_found = 0, br_match_y = -1, br_match_x = -1;
+    if (br_settings.enabled) {
+        int cur_line_len = (int)strlen(lines[cy]);
+        if (cx < cur_line_len && bracket_is_bracket(lines[cy][cx])) {
+            br_match_found = brackets_find_match(cy, cx, &br_match_y, &br_match_x);
+        }
+    }
+#endif
 
     plat_show_cursor(0);
-    plat_clear();
 
     snprintf(buf, sizeof(buf), "-- %s%s -- %d lines", filename, modified ? "*" : "", count);
-    plat_move_cursor(1, 1);
+    plat_clear_line(1);
     put_str(buf);
 
     int w = 1;
@@ -139,7 +152,7 @@ void draw(int cx, int cy, int offset, const char *filename) {
     while (tmp >= 10) { w++; tmp /= 10; }
 
     for (int i = offset; i < offset + term_rows - 2; i++) {
-        plat_move_cursor(i - offset + 2, 1);
+        plat_clear_line(i - offset + 2);
 
         if (i >= count) {
             put_str("~");
@@ -149,8 +162,7 @@ void draw(int cx, int cy, int offset, const char *filename) {
         int len = strlen(lines[i]);
 
         if (settings.show_lines) {
-            if (w > 20) w = 20;
-                snprintf(buf, sizeof(buf), "%*d ~ ", w, i + 1);
+            snprintf(buf, sizeof(buf), "%*d ~ ", w, i + 1);
             put_str(buf);
         }
 
@@ -159,14 +171,19 @@ void draw(int cx, int cy, int offset, const char *filename) {
 #else
         int line_has_sel = 0;
 #endif
+#if FEATURE_BRACKETS
+        int line_has_match = br_match_found && i == br_match_y;
+#else
+        int line_has_match = 0;
+#endif
 
-        if (i != cy && !line_has_sel
+        if (i != cy && !line_has_sel && !line_has_match
 #if FEATURE_HIGHLIGHT
             && !hl_on
 #endif
         ) {
-            /* Быстрый путь: ни курсора, ни выделения, ни подсветки на этой
-             * строке — просто выводим её целиком. */
+            /* Fast path: no cursor, no selection, no bracket match and
+             * no highlighting on this line — just print it whole. */
             put_str(lines[i]);
             continue;
         }
@@ -187,6 +204,11 @@ void draw(int cx, int cy, int offset, const char *filename) {
 #else
             int color = PLAT_COLOR_DEFAULT;
 #endif
+#if FEATURE_BRACKETS
+            if (br_match_found && i == br_match_y && k == br_match_x) {
+                color = PLAT_COLOR_BRACKET_MATCH;
+            }
+#endif
             if (color != PLAT_COLOR_DEFAULT) plat_set_color(color);
             if (is_cursor || is_sel) plat_set_inverse(1);
             plat_putc(lines[i][k]);
@@ -202,10 +224,9 @@ void draw(int cx, int cy, int offset, const char *filename) {
     }
 
     plat_clear_line(term_rows);
-    plat_move_cursor(term_rows, 1);
     put_str(status);
 
-    /* если номера строк включены — w + 3 (номер + " ~ ") + 1 (1-based) */
+    /* if line numbers are on — w + 3 ("<number> ~ ") + 1 (1-based) */
     int prefix = settings.show_lines ? w + 3 : 0;
     plat_move_cursor(cy - offset + 2, cx + prefix + 1);
     plat_show_cursor(1);
@@ -313,7 +334,7 @@ int main(int argc, char *argv[]) {
 
         int c = plat_read_key();
         if (c == 0) {
-            /* ничего не нажато (актуально для MCU) — просто перерисовать */
+            /* nothing pressed (relevant for MCU builds) — just redraw */
             plat_flush();
             continue;
         }
@@ -326,8 +347,8 @@ int main(int argc, char *argv[]) {
         if (is_shift_move) {
             sel_start_if_needed(cy, cx);
         } else if (c != 3 && c != 24) {
-            /* Ctrl+C/Ctrl+X сами разбираются с текущим выделением — любая
-             * другая клавиша его снимает. */
+            /* Ctrl+C/Ctrl+X handle the current selection themselves —
+             * any other key clears it. */
             sel_clear();
         }
         int has_sel = sel_has_range(cy, cx);
@@ -457,7 +478,13 @@ int main(int argc, char *argv[]) {
 #if FEATURE_SELECTION
             if (has_sel) sel_delete(&cy, &cx);
 #endif
+#if FEATURE_BRACKETS
+            if (!br_settings.enabled || !brackets_smart_insert(c, &cy, &cx)) {
+                insert_char(c);
+            }
+#else
             insert_char(c);
+#endif
         }
     }
 

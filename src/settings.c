@@ -8,6 +8,9 @@
 #if FEATURE_HIGHLIGHT
 #include "settings_highlight.h"
 #endif
+#if FEATURE_BRACKETS
+#include "settings_brackets.h"
+#endif
 
 #ifdef _WIN32
 #define MKDIR(path) mkdir(path)
@@ -104,6 +107,9 @@ int settings_save(void) {
 #if FEATURE_HIGHLIGHT
     hl_settings_write(f);
 #endif
+#if FEATURE_BRACKETS
+    br_settings_write(f);
+#endif
     fclose(f);
     return 1;
 }
@@ -137,6 +143,9 @@ int settings_set(const char *key, const char *value) {
 #if FEATURE_HIGHLIGHT
     if (hl_settings_set(key, value)) return 1;
 #endif
+#if FEATURE_BRACKETS
+    if (br_settings_set(key, value)) return 1;
+#endif
     return 0;
 }
 
@@ -160,6 +169,9 @@ int settings_get(const char *key) {
 #if FEATURE_HIGHLIGHT
     if (hl_settings_get(key)) return 1;
 #endif
+#if FEATURE_BRACKETS
+    if (br_settings_get(key)) return 1;
+#endif
     return 0;
 }
 
@@ -170,5 +182,8 @@ void settings_print_all(void) {
     printf("cursor_blink=%s\n", settings.cursor_blink ? "true" : "false");
 #if FEATURE_HIGHLIGHT
     hl_settings_print_all();
+#endif
+#if FEATURE_BRACKETS
+    br_settings_print_all();
 #endif
 }

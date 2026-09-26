@@ -1,25 +1,26 @@
 /*
- * plat_mcu.c — платформенный слой для микроконтроллеров (ESP32, STM32 и т.п.)
+ * plat_mcu.c — platform layer for microcontrollers (ESP32, STM32, etc.)
  *
- * Это не порт терминала, а отдельная реализация: драйвер дисплея (например,
- * ILI9341 через SPI) + опрос кнопок вместо termios/ANSI. Замените заглушки
- * ниже на вызовы вашей библиотеки дисплея, GPIO и таймеров. Ни один из
- * остальных файлов (main.c, settings.c, highlight.c, selection.c) не
- * знает про конкретное железо — они видят только эти функции, объявленные
- * в platform.h. Подробный чек-лист для доведения этого шаблона до
- * работающей прошивки — в README, раздел "Работа без ОС".
+ * This isn't a terminal port, it's a separate implementation: a display
+ * driver (e.g. ILI9341 over SPI) + button polling instead of
+ * termios/ANSI. Replace the stubs below with calls into your display
+ * library, GPIO and timers. None of the other files (main.c, settings.c,
+ * highlight.c, selection.c) know anything about the specific hardware —
+ * they only see these functions, declared in platform.h. A detailed
+ * checklist for turning this template into working firmware is in the
+ * README, "Running without an OS" section.
  *
- * ВАЖНО (см. README, раздел "Работа без ОС"): статические массивы
- * lines[MAX_LINES][*] в main.c рассчитаны на ПК. Для реального порта
- * уменьшите MAX_LINES/MAX_LEN через config.h (или -D при сборке) под
- * доступную RAM, а если этого мало — замените хранение строк на связный
- * список с ограничением общего буфера. Это отдельная задача, не решаемая
- * одной лишь платформенной заглушкой.
+ * IMPORTANT (see README, "Running without an OS"): the static arrays
+ * lines[MAX_LINES][*] in main.c are sized for a PC. For a real port,
+ * shrink MAX_LINES/MAX_LEN via config.h (or -D at build time) to fit
+ * available RAM, and if that's not enough, replace the line storage with
+ * a linked list bounded by a total buffer size. That's a separate task,
+ * not something a platform stub alone can solve.
  */
 
 #include "platform.h"
 
-/* TODO: подключить SDK и библиотеку дисплея, например:
+/* TODO: pull in the SDK and display library, e.g.:
  * #include "driver/spi_master.h"
  * #include "ili9341.h"
  */
@@ -32,10 +33,11 @@
 #define BTN_LEFT   2
 #define BTN_RIGHT  3
 #define BTN_ENTER  4
-/* TODO (FEATURE_SELECTION): если нужна поддержка выделения текста на
- * устройстве без клавиатуры — заведите отдельную кнопку/жест как аналог
- * Shift, например долгое удержание BTN_ENTER во время навигации стрелками,
- * и возвращайте из plat_read_key() PLAT_KEY_SHIFT_* вместо PLAT_KEY_*. */
+/* if you need text-selection support on a
+ * device with no keyboard, add a dedicated button/gesture as a Shift
+ * analog — e.g. holding BTN_ENTER while navigating with the arrows —
+ * and return PLAT_KEY_SHIFT_* instead of PLAT_KEY_* from
+ * plat_read_key(). */
 
 static int cur_row = 0;
 static int cur_col = 0;
@@ -43,13 +45,11 @@ static int inverse = 0;
 static int cur_color = PLAT_COLOR_DEFAULT;
 
 int plat_init(void) {
-    /* TODO: инициализировать SPI/дисплей, например tft.begin();
-     * TODO: настроить пины кнопок как входы с подтяжкой (pull-up) */
     return 1;
 }
 
 void plat_shutdown(void) {
-    /* TODO: выключить дисплей, если нужно */
+    // turn off the display, if needed
 }
 
 void plat_get_size(int *rows, int *cols) {
@@ -58,11 +58,10 @@ void plat_get_size(int *rows, int *cols) {
 }
 
 void plat_clear(void) {
-    /* TODO: очистить буфер/экран дисплея, например tft.fillScreen(BLACK); */
+    // clear the display buffer/screen, e.g. tft.fillScreen(BLACK);
 }
 
 void plat_clear_line(int row) {
-    /* TODO: закрасить одну строку на дисплее прямоугольником фона */
     (void)row;
 }
 
@@ -76,28 +75,32 @@ void plat_set_inverse(int on) {
 }
 
 void plat_set_color(int color) {
-    /* TODO (FEATURE_HIGHLIGHT): сохранить color и учитывать его в
-     * plat_putc при выборе цвета символа, например через таблицу
-     * PLAT_COLOR_* -> RGB565. Если подсветка отключена сборкой
-     * (FEATURE_HIGHLIGHT=0), эта функция не вызывается вовсе. */
+    /* TODO (FEATURE_HIGHLIGHT / FEATURE_BRACKETS): store color and use it
+     * in plat_putc when choosing the glyph color, e.g. via a
+     * PLAT_COLOR_* -> RGB565 table. Remember to also cover
+     * PLAT_COLOR_ESCAPE and PLAT_COLOR_BRACKET_MATCH there if those
+     * modules are enabled for this build. If a module is disabled at
+     * build time (FEATURE_HIGHLIGHT=0 / FEATURE_BRACKETS=0), this
+     * function is simply never called with its colors. */
     cur_color = color;
 }
 
 void plat_show_cursor(int visible) {
-    /* На дисплее курсор обычно рисуется как часть символа (инверсией) —
-     * отдельная сущность "видимость курсора" не нужна, можно оставить пустым. */
+    /* On a display the cursor is usually drawn as part of the glyph
+     * (via inversion) — a separate "cursor visibility" concept isn't
+     * needed, this can stay empty. */
     (void)visible;
 }
 
 void plat_set_cursor_style(int blink) {
-    /* Мигание курсора на дисплее реализуется таймером в plat_flush/основном
-     * цикле, если потребуется. Пока не используется. */
+    /* Cursor blinking on the display would be implemented with a timer
+     * in plat_flush/the main loop, if needed. Not used for now. */
     (void)blink;
 }
 
 void plat_putc(char c) {
-    /* TODO: нарисовать символ c в позиции (cur_row, cur_col) с учётом
-     * inverse и cur_color, например:
+    /* TODO: draw character c at (cur_row, cur_col), honoring inverse and
+     * cur_color, e.g.:
      * uint16_t fg = color_table[cur_color];
      * uint16_t bg = COLOR_BG;
      * if (inverse) { uint16_t t = fg; fg = bg; bg = t; }
@@ -108,13 +111,13 @@ void plat_putc(char c) {
 }
 
 void plat_flush(void) {
-    /* TODO: если используется буферизация — отправить буфер на экран */
+    /* TODO: if buffering is used, push the buffer to the screen */
 }
 
 static int debounce(int pin) {
-    /* TODO: простой антидребезг — считать пин несколько раз подряд с
-     * небольшой задержкой между чтениями и вернуть 1, если кнопка
-     * стабильно нажата всё это время. */
+    /* TODO: simple debouncing — read the pin several times in a row with
+     * a short delay between reads and return 1 if the button was held
+     * down steadily the whole time. */
     (void)pin;
     return 0;
 }
@@ -125,5 +128,5 @@ int plat_read_key(void) {
     if (debounce(BTN_LEFT))  return PLAT_KEY_LEFT;
     if (debounce(BTN_RIGHT)) return PLAT_KEY_RIGHT;
     if (debounce(BTN_ENTER)) return PLAT_KEY_ESC;
-    return 0; /* ничего не нажато — основной цикл перерисует экран и продолжит опрос */
+    return 0; /* nothing pressed — the main loop will redraw and keep polling */
 }

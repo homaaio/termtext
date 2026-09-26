@@ -5,6 +5,7 @@
 
 static HANDLE hin, hout;
 static DWORD orig_in_mode, orig_out_mode;
+static UINT orig_out_cp;
 
 int plat_init(void) {
     hin = GetStdHandle(STD_INPUT_HANDLE);
@@ -14,11 +15,21 @@ int plat_init(void) {
     if (!GetConsoleMode(hin, &orig_in_mode)) return 0;
     if (!GetConsoleMode(hout, &orig_out_mode)) return 0;
 
+    /* Switch the console's OUTPUT code page to UTF-8 so non-ASCII bytes
+     * (Cyrillic and other multi-byte UTF-8 text in the edited file)
+     * render correctly instead of turning into the "unknown character"
+     * diamond glyph. Left as-is: the INPUT code page (SetConsoleCP) —
+     * ReadConsoleInputA below reads raw bytes regardless of it, and
+     * changing it isn't needed to fix display. Restored in
+     * plat_shutdown(). */
+    orig_out_cp = GetConsoleOutputCP();
+    SetConsoleOutputCP(CP_UTF8);
+
     DWORD in_mode = orig_in_mode;
     in_mode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
-    /* Отключаем построчный ввод/эхо и системную обработку Ctrl+C — иначе
-     * консоль сама "съедала" бы Ctrl+C сигналом вместо передачи как
-     * обычного нажатия клавиши (используется под "Копировать"). */
+    /* Turn off line-buffered input/echo and system Ctrl+C handling —
+     * otherwise the console would "eat" Ctrl+C as a signal instead of
+     * passing it through as a normal keypress (used for "Copy"). */
     in_mode &= ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT);
     if (!SetConsoleMode(hin, in_mode)) return 0;
 
@@ -37,6 +48,7 @@ void plat_shutdown(void) {
 
     SetConsoleMode(hin, orig_in_mode);
     SetConsoleMode(hout, orig_out_mode);
+    SetConsoleOutputCP(orig_out_cp);
 }
 
 void plat_get_size(int *rows, int *cols) {
@@ -68,13 +80,15 @@ void plat_set_inverse(int on) {
 
 void plat_set_color(int color) {
     switch (color) {
-        case PLAT_COLOR_KEYWORD: printf("\033[94m"); break;
-        case PLAT_COLOR_TYPE:    printf("\033[96m"); break;
-        case PLAT_COLOR_STRING:  printf("\033[92m"); break;
-        case PLAT_COLOR_COMMENT: printf("\033[90m"); break;
-        case PLAT_COLOR_NUMBER:  printf("\033[93m"); break;
-        case PLAT_COLOR_PREPROC: printf("\033[95m"); break;
-        default:                 printf("\033[39m"); break;
+        case PLAT_COLOR_KEYWORD:       printf("\033[94m"); break;
+        case PLAT_COLOR_TYPE:          printf("\033[96m"); break;
+        case PLAT_COLOR_STRING:        printf("\033[92m"); break;
+        case PLAT_COLOR_COMMENT:       printf("\033[32m"); break;
+        case PLAT_COLOR_NUMBER:        printf("\033[93m"); break;
+        case PLAT_COLOR_PREPROC:       printf("\033[95m"); break;
+        case PLAT_COLOR_ESCAPE:        printf("\033[36m"); break;
+        case PLAT_COLOR_BRACKET_MATCH: printf("\033[33m"); break;
+        default:                       printf("\033[39m"); break;
     }
 }
 
@@ -95,11 +109,12 @@ void plat_flush(void) {
 }
 
 int plat_read_key(void) {
-    /* Читаем события ввода напрямую (вместо _getch()), чтобы видеть
-     * состояние модификаторов (Shift) для стрелок — нужно для выделения
-     * текста. Обычные символы, включая управляющие (Ctrl+буква), приходят
-     * через uChar.AsciiChar, как и раньше. UTF-8 (русские буквы) читается
-     * побайтово — main.c уже на это рассчитан. */
+    /* Read input events directly (instead of _getch()) so we can see
+     * modifier state (Shift) for the arrow keys — needed for text
+     * selection. Plain characters, including control characters
+     * (Ctrl+letter), still come through uChar.AsciiChar as before.
+     * UTF-8 (Cyrillic letters) is read byte-by-byte — main.c already
+     * accounts for this. */
     INPUT_RECORD ir;
     DWORD read;
     for (;;) {

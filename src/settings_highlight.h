@@ -4,13 +4,14 @@
 #include <stdio.h>
 
 /*
- * Настройки модуля подсветки синтаксиса — отдельный файл настроек,
- * компилируемый только при FEATURE_HIGHLIGHT=1 (см. config.h и Makefile),
- * чтобы при отключении модуля из бинарника пропадал и код его настроек.
+ * Settings for the syntax highlighting module — a separate settings
+ * file, compiled only when FEATURE_HIGHLIGHT=1 (see config.h and
+ * Makefile), so that disabling the module also drops its settings code
+ * from the binary.
  */
 
 typedef struct {
-    int enabled; /* вкл/выкл подсветку синтаксиса */
+    int enabled; /* on/off for syntax highlighting */
 } HlSettings;
 
 extern HlSettings hl_settings;

@@ -2,11 +2,11 @@
 #define SETTINGS_H
 
 /*
- * Настройки "ядра" — всегда компилируются, независимо от того, какие
- * необязательные модули включены (см. config.h). Настройки необязательных
- * модулей живут в своих файлах (например settings_highlight.h) и
- * подключаются к общему хранилищу через settings_set/get/save только если
- * соответствующий модуль включён — см. settings.c.
+ * "Core" settings — always compiled, regardless of which optional
+ * modules are enabled (see config.h). Settings for optional modules live
+ * in their own files (e.g. settings_highlight.h) and are wired into the
+ * shared store via settings_set/get/save only if the corresponding
+ * module is enabled — see settings.c.
  */
 
 typedef struct {

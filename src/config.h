@@ -2,37 +2,43 @@
 #define CONFIG_H
 
 /*
- * config.h — общие настройки сборки и переключатели модулей.
+ * config.h — shared build settings and module switches.
  *
- * Каждый модуль можно отключить прямо при сборке, чтобы уменьшить размер
- * бинарника: соответствующие .c-файлы просто не попадут в список исходников
- * в Makefile, и весь их код (таблицы ключевых слов, буфер обмена и т.д.)
- * не будет слинкован в итоговый файл.
+ * Each module can be disabled right at build time to shrink the
+ * binary: the matching .c files simply don't make it into the Makefile's
+ * source list, and all of their code (keyword tables, clipboard buffer,
+ * etc.) never gets linked into the final file.
  *
- *   make tt FEATURE_HIGHLIGHT=0                       # без подсветки синтаксиса
- *   make tt FEATURE_SELECTION=0                       # без выделения и буфера обмена
- *   make tt FEATURE_HIGHLIGHT=0 FEATURE_SELECTION=0   # минимальная сборка (см. `make minimal`)
+ *   make tt FEATURE_HIGHLIGHT=0                                       # no syntax highlighting
+ *   make tt FEATURE_SELECTION=0                                       # no selection / clipboard
+ *   make tt FEATURE_BRACKETS=0                                        # no smart brackets
+ *   make tt FEATURE_HIGHLIGHT=0 FEATURE_SELECTION=0 FEATURE_BRACKETS=0 # minimal build (see `make minimal`)
  *
- * Значения ниже — это то, что получится, если собрать без параметров
- * (make tt) или открыть проект в IDE, которая не знает про Makefile.
- * Реальное значение всегда приходит снаружи через -D (см. Makefile).
+ * The values below are what you get building with no parameters
+ * (make tt), or opening the project in an IDE that doesn't know about
+ * the Makefile. The real value always comes from outside via -D (see
+ * Makefile).
  */
 
 #ifndef FEATURE_HIGHLIGHT
-#define FEATURE_HIGHLIGHT 1   /* подсветка синтаксиса: src/highlight.c, src/settings_highlight.c */
+#define FEATURE_HIGHLIGHT 1   /* syntax highlighting: src/highlight.c, src/settings_highlight.c */
 #endif
 
 #ifndef FEATURE_SELECTION
-#define FEATURE_SELECTION 1   /* выделение текста + внутренний буфер обмена: src/selection.c */
+#define FEATURE_SELECTION 1   /* text selection + internal clipboard: src/selection.c */
+#endif
+
+#ifndef FEATURE_BRACKETS
+#define FEATURE_BRACKETS 1    /* smart brackets: auto-close pairs + matching-bracket highlight: src/brackets.c, src/settings_brackets.c */
 #endif
 
 /*
- * Лимиты буфера редактора. На ПК (unix/win) значения по умолчанию не
- * критичны. При портировании на микроконтроллер (см. plat_mcu.c и раздел
- * README "Работа без ОС") их почти наверняка нужно уменьшить под доступную
- * RAM — переопределяются точно так же, через -D:
+ * Editor buffer limits. On PC (unix/win) the default values aren't
+ * critical. When porting to a microcontroller (see plat_mcu.c and the
+ * README's "Running without an OS" section) they almost certainly need
+ * shrinking to fit available RAM — overridden the same way, via -D:
  *
- *   make tt PLAT=mcu FEATURE_HIGHLIGHT=0 FEATURE_SELECTION=0 \
+ *   make tt PLAT=mcu FEATURE_HIGHLIGHT=0 FEATURE_SELECTION=0 FEATURE_BRACKETS=0 \
  *           EXTRA_CFLAGS="-DMAX_LINES=200 -DMAX_LEN=128"
  */
 #ifndef MAX_LINES

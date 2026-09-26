@@ -3,7 +3,7 @@
 #include "config.h"
 #include "selection.h"
 
-/* Буфер строк редактора — определён в main.c. */
+/* The editor's line buffer — defined in main.c. */
 extern char *lines[MAX_LINES];
 extern int   count;
 extern void insert_line(int at, char *s);

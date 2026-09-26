@@ -2,16 +2,16 @@
 #define PLATFORM_H
 
 /*
- * Общий платформенный интерфейс. Никаких системных заголовков здесь —
- * только объявления и константы. Реализации: plat_unix.c, plat_win.c,
+ * Shared platform interface. No system headers here — just
+ * declarations and constants. Implementations: plat_unix.c, plat_win.c,
  * plat_mcu.c.
  */
 
-/* Инициализация / завершение работы платформы (терминал, дисплей и т.п.) */
-int  plat_init(void);      /* 0 при ошибке, иначе не 0 */
-void plat_shutdown(void);  /* вернуть исходное состояние */
+/* Init / shutdown of the platform layer (terminal, display, etc.) */
+int  plat_init(void);      /* 0 on error, non-zero otherwise */
+void plat_shutdown(void);  /* restore the original state */
 
-/* Экран */
+/* Screen */
 void plat_get_size(int *rows, int *cols);
 void plat_clear(void);
 void plat_clear_line(int row);
@@ -21,11 +21,13 @@ void plat_show_cursor(int visible);
 void plat_set_cursor_style(int blink);
 
 /*
- * Цвет текста — используется модулем подсветки синтаксиса (см.
- * FEATURE_HIGHLIGHT в config.h и src/highlight.c). Если модуль подсветки
- * отключён при сборке, эта функция просто не вызывается, но остаётся
- * частью интерфейса, чтобы каждой платформе не нужно было знать о
- * FEATURE_HIGHLIGHT напрямую.
+ * Text color — used by the syntax highlighting module (see
+ * FEATURE_HIGHLIGHT in config.h and src/highlight.c) and by the smart
+ * brackets module's matching-bracket highlight (see FEATURE_BRACKETS in
+ * config.h and src/brackets.c). If a module is disabled at build time,
+ * the corresponding colors are simply never passed in, but they stay
+ * part of the interface so no platform needs to know about
+ * FEATURE_HIGHLIGHT/FEATURE_BRACKETS directly.
  */
 enum {
     PLAT_COLOR_DEFAULT = 0,
@@ -34,16 +36,18 @@ enum {
     PLAT_COLOR_STRING,
     PLAT_COLOR_COMMENT,
     PLAT_COLOR_NUMBER,
-    PLAT_COLOR_PREPROC
+    PLAT_COLOR_PREPROC,
+    PLAT_COLOR_ESCAPE,       /* escape sequences inside strings/chars, e.g. \n \t \xFF */
+    PLAT_COLOR_BRACKET_MATCH /* the matching partner of the bracket under the cursor */
 };
 void plat_set_color(int color);
 
-/* Вывод / ввод */
+/* Output / input */
 void plat_putc(char c);
 void plat_flush(void);
-int  plat_read_key(void); /* обычные символы — как есть, стрелки — константы ниже */
+int  plat_read_key(void); /* plain characters — as-is, arrows — constants below */
 
-/* Специальные клавиши */
+/* Special keys */
 #define PLAT_KEY_UP    1000
 #define PLAT_KEY_DOWN  1001
 #define PLAT_KEY_RIGHT 1002
@@ -51,10 +55,10 @@ int  plat_read_key(void); /* обычные символы — как есть, 
 #define PLAT_KEY_ESC   27
 
 /*
- * Стрелки с зажатым Shift — используются модулем выделения текста (см.
- * FEATURE_SELECTION в config.h и src/selection.c). Если модуль выделения
- * отключён, main.c просто обрабатывает их как обычные стрелки, поэтому
- * реализации plat_*.c всегда могут их возвращать без #ifdef.
+ * Shift-held arrows — used by the text-selection module (see
+ * FEATURE_SELECTION in config.h and src/selection.c). If the selection
+ * module is disabled, main.c just treats them as plain arrows, so
+ * plat_*.c implementations can always return them without #ifdef.
  */
 #define PLAT_KEY_SHIFT_UP    1010
 #define PLAT_KEY_SHIFT_DOWN  1011
