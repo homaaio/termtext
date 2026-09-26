@@ -11,8 +11,14 @@ system at all.
 - Move the cursor with arrow keys
 - Insert, delete, split and join lines
 - **Text selection** — hold `Shift` and use the arrow keys to select a
-  range, then cut/copy/paste it with an internal clipboard (`Ctrl+X`,
-  `Ctrl+C`, `Ctrl+V`) that works even on platforms with no OS clipboard
+  range, then cut/copy/paste it (`Ctrl+X`, `Ctrl+C`, `Ctrl+V`). Cut/copy
+  reach the OS clipboard when one is available (so text copied in
+  termtext pastes elsewhere, and vice versa) and always keep an internal
+  clipboard too, so cut/copy/paste still work on platforms with no OS
+  clipboard
+- **Find (`Ctrl+F`) and find & replace (`Ctrl+H`)** — plain-text search,
+  wrapping around the document; find & replace reuses the same search
+  and replaces every match in one go
 - **Syntax highlighting** — a lightweight, keywords-and-literals-only
   highlighter for C/C++, Rust, Python and assembly; toggle it on/off in
   settings
@@ -21,6 +27,8 @@ system at all.
   over it instead of duplicating it), and the bracket matching the one
   under the cursor is highlighted; toggle it on/off in settings
 - Save (`Ctrl+S`) and "save as" (`Ctrl+O`)
+- `Ctrl+Q` asks for confirmation (press it twice) if the file has
+  unsaved changes
 - Status line for messages
 - Alternate screen — the terminal returns to its previous state on exit
 - Feature modules that can be compiled out to shrink the binary (see
@@ -29,18 +37,19 @@ system at all.
 ## Project layout
 
     src/main.c               editor logic, platform-independent
-    src/config.h              feature flags (FEATURE_HIGHLIGHT, FEATURE_SELECTION, FEATURE_BRACKETS) and buffer limits
+    src/config.h              feature flags (FEATURE_HIGHLIGHT, FEATURE_SELECTION, FEATURE_BRACKETS, FEATURE_FIND) and buffer limits
     src/settings.c/h          core settings storage (~/.config/tt/settings.conf)
     src/settings_highlight.c/h  highlight on/off setting (only built if FEATURE_HIGHLIGHT=1)
     src/highlight.c/h         syntax highlighting (only built if FEATURE_HIGHLIGHT=1)
     src/selection.c/h         text selection + internal clipboard (only built if FEATURE_SELECTION=1)
     src/settings_brackets.c/h   smart-brackets on/off setting (only built if FEATURE_BRACKETS=1)
     src/brackets.c/h          smart brackets: auto-close + matching-bracket highlight (only built if FEATURE_BRACKETS=1)
+    src/find.c/h              find + find & replace (only built if FEATURE_FIND=1)
     src/version.h             version string
-    src/platform.h            platform interface (plat_*)
-    src/plat_unix.c           Linux/macOS implementation (termios + ANSI)
-    src/plat_win.c            Windows implementation (Console API + VT sequences)
-    src/plat_mcu.c            skeleton for microcontrollers (display + buttons)
+    src/platform.h            platform interface (plat_*), including the optional OS clipboard hooks
+    src/plat_unix.c           Linux/macOS implementation (termios + ANSI); OS clipboard via wl-copy/xclip/xsel/pbcopy, whichever is installed
+    src/plat_win.c            Windows implementation (Console API + VT sequences); OS clipboard via the Win32 Clipboard API
+    src/plat_mcu.c            skeleton for microcontrollers (display + buttons); no OS clipboard to hook up
 
 ## Build
 
@@ -56,22 +65,24 @@ for your specific chip. See "Running without an OS" below.
 
 ## Modules and binary size
 
-Syntax highlighting, text selection and smart brackets are each a
-self-contained module that can be left out of the build entirely — not
-just disabled at runtime, but not compiled or linked in at all, so its
-keyword tables, buffer-copy logic or clipboard don't take up space in
+Syntax highlighting, text selection, smart brackets and find/replace are
+each a self-contained module that can be left out of the build entirely
+— not just disabled at runtime, but not compiled or linked in at all, so
+its keyword tables, buffer-copy logic or clipboard don't take up space in
 the binary:
 
     make tt FEATURE_HIGHLIGHT=0                       # no syntax highlighting
     make tt FEATURE_SELECTION=0                       # no selection / clipboard
     make tt FEATURE_BRACKETS=0                        # no smart brackets
-    make minimal                                      # all three off — same as above combined
+    make tt FEATURE_FIND=0                            # no find / find & replace
+    make minimal                                      # all four off — same as above combined
     make tiny                                         # minimal + -Os + dead-code stripping
 
 Feature flags default to `1` (see `src/config.h`) and are passed to the
 compiler with `-D`, so `#if FEATURE_HIGHLIGHT` / `#if FEATURE_SELECTION`
-/ `#if FEATURE_BRACKETS` blocks compile away cleanly on either side. On
-this machine, a release build of `tt` came out at roughly:
+/ `#if FEATURE_BRACKETS` / `#if FEATURE_FIND` blocks compile away cleanly
+on either side. On this machine, a release build of `tt` came out at
+roughly:
 
 | Build             | Size (unix, gcc -O2) |
 |-------------------|-----------------------|
@@ -120,16 +131,18 @@ If the file does not exist, it will be created on first save.
 | Arrows | Move cursor |
 | `Shift` + Arrows | Extend selection (`FEATURE_SELECTION`) |
 | Regular characters | Insert (replaces selection, if any) |
-| Backspace | Delete character / join with previous line / delete selection |
+| Backspace (`DEL`, 0x7F) | Delete character / join with previous line / delete selection |
 | Enter | Split line (replaces selection, if any) |
-| `Ctrl+C` | Copy selection to the internal clipboard |
-| `Ctrl+X` | Cut selection to the internal clipboard |
-| `Ctrl+V` | Paste from the internal clipboard |
+| `Ctrl+C` | Copy selection (OS clipboard if available, always the internal one too) |
+| `Ctrl+X` | Cut selection (same clipboards as `Ctrl+C`) |
+| `Ctrl+V` | Paste — OS clipboard if available and non-empty, else the internal one |
+| `Ctrl+F` | Find (prompts for text; empty input repeats the last search) |
+| `Ctrl+H` | Find & replace (prompts for text, then replacement; replaces every match) |
 | `Ctrl+S` | Save |
 | `Ctrl+O` | Save as (prompts for name) |
 | `Ctrl+E` | Scroll down |
 | `Ctrl+Y` | Scroll up |
-| `Ctrl+Q` | Quit |
+| `Ctrl+Q` | Quit — if there are unsaved changes, asks for a second, immediate `Ctrl+Q` to confirm |
 
 Typing `(`, `[`, `{`, `"` or `'` auto-inserts its closing partner and
 leaves the cursor between them (`FEATURE_BRACKETS`); typing the closing
@@ -137,9 +150,19 @@ character yourself right before an auto-inserted one just moves past it
 instead of adding a duplicate. Selection is anchored where you first
 press `Shift`+Arrow and follows the
 cursor from there; any other key (besides `Ctrl+C`/`Ctrl+X`, which act on
-it) clears it. The clipboard is internal to termtext, not the OS
-clipboard — this is what lets cut/copy/paste work identically on unix,
-Windows, and a bare-metal MCU build alike.
+it) clears it. Cut/copy/paste use the OS clipboard when one is reachable
+(on unix, via whichever of `wl-copy`/`xclip`/`xsel`/`pbcopy` is
+installed; on Windows, via the Win32 Clipboard API) and otherwise fall
+back to an internal, termtext-only clipboard — which is also what keeps
+cut/copy/paste working identically on a bare-metal MCU build, where
+there's no OS clipboard to reach at all.
+
+`Ctrl+H` shares its key code (0x08) with the traditional ASCII meaning of
+Backspace. In raw terminal mode (as used here), modern terminals send
+`DEL` (0x7F) for the Backspace key instead, which is why Backspace above
+is bound to `DEL` only — but if your terminal's Backspace key turns out
+to send 0x08, it will trigger find & replace instead of deleting a
+character.
 
 ## Settings
 
@@ -194,7 +217,7 @@ project.
 ## Running without an OS
 
 termtext's core (`main.c`, `settings.c`, `highlight.c`, `selection.c`,
-`brackets.c`) is
+`brackets.c`, `find.c`) is
 plain, freestanding-friendly C: it never talks to the terminal, a
 filesystem driver, or any OS service directly. Every place it needs to
 touch actual hardware — the screen, the keyboard/buttons, colors — it
@@ -256,7 +279,8 @@ To bring up a real port:
    file? nothing, RAM-only?) and adjust the two `fopen` call sites in
    `main.c` accordingly if you don't have a real filesystem.
 5. Build with the modules you actually want (`FEATURE_HIGHLIGHT`,
-   `FEATURE_SELECTION`, `FEATURE_BRACKETS`) — see "Modules and binary
+   `FEATURE_SELECTION`, `FEATURE_BRACKETS`, `FEATURE_FIND`) — see
+   "Modules and binary
    size" — since flash space is usually at more of a premium on a
    microcontroller than on a PC. `make mcu` builds with all three off as
    a sane starting point.
@@ -272,8 +296,12 @@ implement is listed there with a one-line comment each.
   "Smart brackets" above.
 - Selection extends by character/line, not by word; there's no
   select-all shortcut.
-- The internal clipboard holds one item and is not shared with the
-  system clipboard or between separate `tt` processes — by design, so it
-  keeps working with `FEATURE_SELECTION=1` on a target with no OS
-  clipboard to share with.
+- The OS clipboard is reached via an external helper on unix
+  (`wl-copy`/`xclip`/`xsel`/`pbcopy`) — if none of those are installed,
+  cut/copy/paste silently fall back to the internal, termtext-only
+  clipboard instead (which is also all that's available on `plat_mcu.c`,
+  by design — there's no OS clipboard on bare metal).
+- Find and find & replace do plain substring matching only — no regular
+  expressions, no case-insensitive option, and find & replace always
+  replaces every match in the file rather than confirming one at a time.
 - `plat_mcu.c` is a template, not a tested driver for any specific board.
