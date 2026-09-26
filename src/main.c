@@ -16,6 +16,9 @@
 #include "brackets.h"
 #include "settings_brackets.h"
 #endif
+#if FEATURE_FIND
+#include "find.h"
+#endif
 
 char *lines[MAX_LINES];
 int count = 0;
@@ -323,6 +326,7 @@ int main(int argc, char *argv[]) {
 
     int offset = 0;
     int running = 1;
+    int quit_pending = 0; /* set after a first Ctrl+Q on an unsaved file; needs a second, immediate Ctrl+Q to actually quit */
 
     while (running) {
         plat_get_size(&term_rows, &term_cols);
@@ -339,6 +343,7 @@ int main(int argc, char *argv[]) {
             continue;
         }
         if (status[0]) status[0] = 0;
+        if (c != 17) quit_pending = 0; /* anything other than Ctrl+Q cancels a pending quit confirmation */
         len = strlen(lines[cy]);
 
 #if FEATURE_SELECTION
@@ -354,8 +359,17 @@ int main(int argc, char *argv[]) {
         int has_sel = sel_has_range(cy, cx);
 #endif
 
-        if (c == EOF || c == 17) {
+        if (c == EOF) {
             running = 0;
+        } else if (c == 17) {
+            /* Ctrl+Q — quit; if there are unsaved changes, require a
+             * second, immediate Ctrl+Q instead of quitting right away. */
+            if (modified && !quit_pending) {
+                quit_pending = 1;
+                set_status("Unsaved changes! Press Ctrl+Q again to quit without saving");
+            } else {
+                running = 0;
+            }
         } else if (c == 19) {
             /* Ctrl+S — just save file */
             if (save_current()) set_status("Saved!");
@@ -371,32 +385,47 @@ int main(int argc, char *argv[]) {
             }
 #if FEATURE_SELECTION
         } else if (c == 3) {
-            /* Ctrl+C — copy selection to the internal clipboard */
+            /* Ctrl+C — copy selection to the OS clipboard, so it's
+             * available outside termtext too, with the internal
+             * clipboard (selection.c) mirroring it as a fallback for
+             * platforms with no OS clipboard to reach. */
             if (has_sel) {
                 char *txt = sel_copy_text(cy, cx);
                 if (txt != NULL) {
-                    sel_clipboard_set(txt);
+                    plat_clipboard_set(txt);
+                    sel_clipboard_set(txt); /* takes ownership of txt */
                     set_status("Copied");
                 }
             }
         } else if (c == 24) {
-            /* Ctrl+X — cut selection to the internal clipboard */
+            /* Ctrl+X — same as Ctrl+C, but removes the selection too */
             if (has_sel) {
                 char *txt = sel_copy_text(cy, cx);
                 sel_delete(&cy, &cx);
                 modified = 1;
                 if (txt != NULL) {
-                    sel_clipboard_set(txt);
+                    plat_clipboard_set(txt);
+                    sel_clipboard_set(txt); /* takes ownership of txt */
                     set_status("Cut");
                 }
             }
         } else if (c == 22) {
-            /* Ctrl+V — paste from the internal clipboard */
+            /* Ctrl+V — paste. Prefers the OS clipboard, so text copied
+             * from outside termtext pastes too; falls back to the
+             * internal clipboard where there's no OS clipboard to read
+             * (or it's empty). */
             if (has_sel) sel_delete(&cy, &cx);
-            const char *clip = sel_clipboard_get();
-            if (clip != NULL) {
-                paste_text(clip);
+            char *os_clip = plat_clipboard_get();
+            if (os_clip != NULL) {
+                paste_text(os_clip);
+                sel_clipboard_set(os_clip); /* keep both clipboards in sync; takes ownership */
                 set_status("Pasted");
+            } else {
+                const char *clip = sel_clipboard_get();
+                if (clip != NULL) {
+                    paste_text(clip);
+                    set_status("Pasted");
+                }
             }
 #endif
         } else if (c == PLAT_KEY_UP
@@ -427,7 +456,45 @@ int main(int argc, char *argv[]) {
             if (offset + term_rows - 2 < count) offset++;
         } else if (c == 25) {
             if (offset > 0) offset--;
-        } else if (c == 127 || c == 8) {
+#if FEATURE_FIND
+        } else if (c == 6) {
+            /* Ctrl+F — find. Empty input reuses the last search query. */
+            char query[128];
+            if (prompt("Find: ", query, sizeof(query))) {
+                const char *q = query[0] ? query : find_get_last();
+                if (q != NULL && q[0]) {
+                    find_set_last(q);
+                    set_status(find_next(q, &cy, &cx, 1) ? "Found" : "Not found");
+                }
+            }
+        } else if (c == 8) {
+            /* Ctrl+H — find & replace, built on the same find_next() /
+             * find_replace_all() as Ctrl+F above rather than a second
+             * search implementation. Replaces every match in the file.
+             *
+             * Note: code 8 is also the traditional ASCII code for
+             * Backspace, but modern terminals (in raw mode, as used
+             * here) send DEL (127) for the Backspace key instead — see
+             * the Backspace handling below, which now only reacts to
+             * 127. If your terminal's Backspace key turns out to still
+             * send 8, tell me and I'll move find & replace to a
+             * different key. */
+            char query[128];
+            if (prompt("Find: ", query, sizeof(query))) {
+                const char *q = query[0] ? query : find_get_last();
+                if (q != NULL && q[0]) {
+                    char repl[128];
+                    if (prompt("Replace with: ", repl, sizeof(repl))) {
+                        find_set_last(q);
+                        int n = find_replace_all(q, repl);
+                        char msg[64];
+                        snprintf(msg, sizeof(msg), "Replaced %d occurrence(s)", n);
+                        set_status(msg);
+                    }
+                }
+            }
+#endif
+        } else if (c == 127) {
 #if FEATURE_SELECTION
             if (has_sel) {
                 sel_delete(&cy, &cx);
