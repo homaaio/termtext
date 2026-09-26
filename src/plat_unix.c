@@ -128,3 +128,73 @@ int plat_read_key(void) {
     }
     return c; /* Cyrillic letters arrive as two UTF-8 bytes — main.c accounts for this */
 }
+
+/*
+ * OS clipboard, via whichever external helper is installed — there's no
+ * portable libc/X11-free way to reach it otherwise. Each list is tried
+ * once (first that exists wins) and the result is cached, so normal
+ * Ctrl+C/X/V use costs one extra fork+exec, not a fresh search of every
+ * tool on the list.
+ */
+static const char *clip_copy_cmds[] = {
+    "wl-copy", "xclip -selection clipboard -in", "xsel --clipboard --input", "pbcopy", NULL
+};
+static const char *clip_paste_cmds[] = {
+    "wl-paste -n", "xclip -selection clipboard -out", "xsel --clipboard --output", "pbpaste", NULL
+};
+
+static int clip_tool_exists(const char *cmd) {
+    char prog[64], check[128];
+    if (sscanf(cmd, "%63s", prog) != 1) return 0;
+    snprintf(check, sizeof(check), "command -v %s >/dev/null 2>&1", prog);
+    return system(check) == 0;
+}
+
+void plat_clipboard_set(const char *text) {
+    static int idx = -2; /* -2 = not probed yet, -1 = no tool found */
+    if (idx == -2) {
+        idx = -1;
+        for (int i = 0; clip_copy_cmds[i] != NULL; i++) {
+            if (clip_tool_exists(clip_copy_cmds[i])) { idx = i; break; }
+        }
+    }
+    if (idx < 0 || text == NULL) return;
+    FILE *p = popen(clip_copy_cmds[idx], "w");
+    if (p == NULL) return;
+    fwrite(text, 1, strlen(text), p);
+    pclose(p);
+}
+
+char *plat_clipboard_get(void) {
+    static int idx = -2;
+    if (idx == -2) {
+        idx = -1;
+        for (int i = 0; clip_paste_cmds[i] != NULL; i++) {
+            if (clip_tool_exists(clip_paste_cmds[i])) { idx = i; break; }
+        }
+    }
+    if (idx < 0) return NULL;
+
+    FILE *p = popen(clip_paste_cmds[idx], "r");
+    if (p == NULL) return NULL;
+
+    size_t cap = 4096, len = 0;
+    char *buf = malloc(cap);
+    if (buf == NULL) { pclose(p); return NULL; }
+
+    int c;
+    while ((c = fgetc(p)) != EOF) {
+        if (len + 1 >= cap) {
+            cap *= 2;
+            char *nb = realloc(buf, cap);
+            if (nb == NULL) { free(buf); pclose(p); return NULL; }
+            buf = nb;
+        }
+        buf[len++] = (char)c;
+    }
+    buf[len] = 0;
+    pclose(p);
+
+    if (len == 0) { free(buf); return NULL; }
+    return buf;
+}

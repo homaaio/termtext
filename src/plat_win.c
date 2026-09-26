@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "platform.h"
 #include "settings.h"
 
@@ -133,4 +134,55 @@ int plat_read_key(void) {
         }
         if (k->uChar.AsciiChar != 0) return (unsigned char)k->uChar.AsciiChar;
     }
+}
+
+/*
+ * OS clipboard via the Win32 Clipboard API. Text is exchanged as UTF-8
+ * with the rest of the program and converted to/from CF_UNICODETEXT at
+ * the boundary — the same UTF-8 handling this file already applies to
+ * console output (see the CP_UTF8 note in plat_init).
+ */
+void plat_clipboard_set(const char *text) {
+    if (text == NULL) return;
+    int wlen = MultiByteToWideChar(CP_UTF8, 0, text, -1, NULL, 0);
+    if (wlen <= 0) return;
+
+    if (!OpenClipboard(NULL)) return;
+    EmptyClipboard();
+
+    HGLOBAL hmem = GlobalAlloc(GMEM_MOVEABLE, (SIZE_T)wlen * sizeof(WCHAR));
+    if (hmem != NULL) {
+        WCHAR *dst = (WCHAR *)GlobalLock(hmem);
+        if (dst != NULL) {
+            MultiByteToWideChar(CP_UTF8, 0, text, -1, dst, wlen);
+            GlobalUnlock(hmem);
+            /* Ownership of hmem passes to the clipboard on success — do
+             * not free it ourselves either way. */
+            SetClipboardData(CF_UNICODETEXT, hmem);
+        }
+    }
+    CloseClipboard();
+}
+
+char *plat_clipboard_get(void) {
+    if (!IsClipboardFormatAvailable(CF_UNICODETEXT)) return NULL;
+    if (!OpenClipboard(NULL)) return NULL;
+
+    char *out = NULL;
+    HGLOBAL hmem = GetClipboardData(CF_UNICODETEXT);
+    if (hmem != NULL) {
+        WCHAR *wtext = (WCHAR *)GlobalLock(hmem);
+        if (wtext != NULL) {
+            int len = WideCharToMultiByte(CP_UTF8, 0, wtext, -1, NULL, 0, NULL, NULL);
+            if (len > 0) {
+                out = malloc(len);
+                if (out != NULL) {
+                    WideCharToMultiByte(CP_UTF8, 0, wtext, -1, out, len, NULL, NULL);
+                }
+            }
+            GlobalUnlock(hmem);
+        }
+    }
+    CloseClipboard();
+    return out;
 }

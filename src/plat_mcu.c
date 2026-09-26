@@ -33,7 +33,7 @@
 #define BTN_LEFT   2
 #define BTN_RIGHT  3
 #define BTN_ENTER  4
-/* if you need text-selection support on a
+/* TODO (FEATURE_SELECTION): if you need text-selection support on a
  * device with no keyboard, add a dedicated button/gesture as a Shift
  * analog — e.g. holding BTN_ENTER while navigating with the arrows —
  * and return PLAT_KEY_SHIFT_* instead of PLAT_KEY_* from
@@ -45,11 +45,13 @@ static int inverse = 0;
 static int cur_color = PLAT_COLOR_DEFAULT;
 
 int plat_init(void) {
+    /* TODO: initialize SPI/display, e.g. tft.begin();
+     * TODO: configure the button pins as pulled-up inputs */
     return 1;
 }
 
 void plat_shutdown(void) {
-    // turn off the display, if needed
+    /* TODO: turn off the display, if needed */
 }
 
 void plat_get_size(int *rows, int *cols) {
@@ -58,10 +60,11 @@ void plat_get_size(int *rows, int *cols) {
 }
 
 void plat_clear(void) {
-    // clear the display buffer/screen, e.g. tft.fillScreen(BLACK);
+    /* TODO: clear the display buffer/screen, e.g. tft.fillScreen(BLACK); */
 }
 
 void plat_clear_line(int row) {
+    /* TODO: paint over one display row with a background rectangle */
     (void)row;
 }
 
@@ -129,4 +132,14 @@ int plat_read_key(void) {
     if (debounce(BTN_RIGHT)) return PLAT_KEY_RIGHT;
     if (debounce(BTN_ENTER)) return PLAT_KEY_ESC;
     return 0; /* nothing pressed — the main loop will redraw and keep polling */
+}
+
+/* No system clipboard on bare metal — Ctrl+C/X/V (FEATURE_SELECTION)
+ * fall back to the internal clipboard in selection.c automatically. */
+void plat_clipboard_set(const char *text) {
+    (void)text;
+}
+
+char *plat_clipboard_get(void) {
+    return NULL;
 }
