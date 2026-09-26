@@ -12,7 +12,8 @@
  *   make tt FEATURE_HIGHLIGHT=0                                       # no syntax highlighting
  *   make tt FEATURE_SELECTION=0                                       # no selection / clipboard
  *   make tt FEATURE_BRACKETS=0                                        # no smart brackets
- *   make tt FEATURE_HIGHLIGHT=0 FEATURE_SELECTION=0 FEATURE_BRACKETS=0 # minimal build (see `make minimal`)
+ *   make tt FEATURE_FIND=0                                            # no find / find & replace
+ *   make tt FEATURE_HIGHLIGHT=0 FEATURE_SELECTION=0 FEATURE_BRACKETS=0 FEATURE_FIND=0 # minimal build (see `make minimal`)
  *
  * The values below are what you get building with no parameters
  * (make tt), or opening the project in an IDE that doesn't know about
@@ -30,6 +31,10 @@
 
 #ifndef FEATURE_BRACKETS
 #define FEATURE_BRACKETS 1    /* smart brackets: auto-close pairs + matching-bracket highlight: src/brackets.c, src/settings_brackets.c */
+#endif
+
+#ifndef FEATURE_FIND
+#define FEATURE_FIND 1        /* find (Ctrl+F) and find & replace (Ctrl+H): src/find.c */
 #endif
 
 /*
