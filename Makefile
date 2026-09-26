@@ -9,11 +9,14 @@ PLAT ?= unix
 #   make tt FEATURE_HIGHLIGHT=0
 #   make tt FEATURE_SELECTION=0
 #   make tt FEATURE_BRACKETS=0
-#   make minimal          # all three modules off in one command
+#   make tt FEATURE_FIND=0
+#   make tt FEATURE_UNDO=0
+#   make minimal          # all modules off in one command
 FEATURE_HIGHLIGHT ?= 1
 FEATURE_SELECTION ?= 1
 FEATURE_BRACKETS ?= 1
 FEATURE_FIND ?= 1
+FEATURE_UNDO ?= 1
 
 # Extra compiler flags for fine-tuning (buffer limits, flags for a
 # specific MCU, etc.), see config.h and the README ("Running without an
@@ -21,7 +24,7 @@ FEATURE_FIND ?= 1
 #   make tt PLAT=mcu EXTRA_CFLAGS="-DMAX_LINES=200 -DMAX_LEN=128 -Os"
 EXTRA_CFLAGS ?=
 
-FEATURE_FLAGS = -DFEATURE_HIGHLIGHT=$(FEATURE_HIGHLIGHT) -DFEATURE_SELECTION=$(FEATURE_SELECTION) -DFEATURE_BRACKETS=$(FEATURE_BRACKETS) -DFEATURE_FIND=$(FEATURE_FIND)
+FEATURE_FLAGS = -DFEATURE_HIGHLIGHT=$(FEATURE_HIGHLIGHT) -DFEATURE_SELECTION=$(FEATURE_SELECTION) -DFEATURE_BRACKETS=$(FEATURE_BRACKETS) -DFEATURE_FIND=$(FEATURE_FIND) -DFEATURE_UNDO=$(FEATURE_UNDO)
 ALL_CFLAGS = $(CFLAGS) $(FEATURE_FLAGS) $(EXTRA_CFLAGS)
 
 SRC = src/main.c src/settings.c src/plat_$(PLAT).c
@@ -47,6 +50,11 @@ SRC += src/find.c
 COMMON_DEPS += src/find.h
 endif
 
+ifeq ($(FEATURE_UNDO),1)
+SRC += src/undo.c
+COMMON_DEPS += src/undo.h
+endif
+
 tt: $(SRC) $(COMMON_DEPS)
 	$(CC) $(ALL_CFLAGS) -o tt $(SRC)
 
@@ -61,17 +69,17 @@ win: ; $(MAKE) tt PLAT=win CC=x86_64-w64-mingw32-gcc
 # MCUs are better off with a compact binary anyway; enable them
 # explicitly if needed (FEATURE_HIGHLIGHT=1 FEATURE_SELECTION=1
 # FEATURE_BRACKETS=1).
-mcu: ; $(MAKE) tt PLAT=mcu FEATURE_HIGHLIGHT=0 FEATURE_SELECTION=0 FEATURE_BRACKETS=0 FEATURE_FIND=0
+mcu: ; $(MAKE) tt PLAT=mcu FEATURE_HIGHLIGHT=0 FEATURE_SELECTION=0 FEATURE_BRACKETS=0 FEATURE_FIND=0 FEATURE_UNDO=0
 
-# Minimal PC build: all three optional modules off — the smallest
-# binary that still edits text.
-minimal: ; $(MAKE) tt FEATURE_HIGHLIGHT=0 FEATURE_SELECTION=0 FEATURE_BRACKETS=0 FEATURE_FIND=0
+# Minimal PC build: all optional modules off — the smallest binary that
+# still edits text.
+minimal: ; $(MAKE) tt FEATURE_HIGHLIGHT=0 FEATURE_SELECTION=0 FEATURE_BRACKETS=0 FEATURE_FIND=0 FEATURE_UNDO=0
 
 # Same, but with extra size optimization and dead-code removal at link
 # time — usually a noticeable win on top of just disabling the modules.
 tiny:
 	$(MAKE) tt EXTRA_CFLAGS="-Os -ffunction-sections -fdata-sections" \
-	           FEATURE_HIGHLIGHT=0 FEATURE_SELECTION=0 FEATURE_BRACKETS=0 FEATURE_FIND=0 \
+	           FEATURE_HIGHLIGHT=0 FEATURE_SELECTION=0 FEATURE_BRACKETS=0 FEATURE_FIND=0 FEATURE_UNDO=0 \
 	           CFLAGS="-Wall -Wl,--gc-sections -s"
 
 install: tt
