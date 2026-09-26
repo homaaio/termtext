@@ -10,6 +10,7 @@ tt
 tr
 editor
 *.txt
+!CHANGELOG.txt
 *.deb
 test.*
 test
