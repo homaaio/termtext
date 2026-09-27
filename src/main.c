@@ -22,6 +22,10 @@
 #if FEATURE_UNDO
 #include "undo.h"
 #endif
+#if FEATURE_GIT
+#include "gitdiff.h"
+#include "settings_git.h"
+#endif
 
 char *lines[MAX_LINES];
 int count = 0;
@@ -177,8 +181,24 @@ void draw(int cx, int cy, int offset, const char *filename) {
         int len = strlen(lines[i]);
 
         if (settings.show_lines) {
-            snprintf(buf, sizeof(buf), "%*d ~ ", w, i + 1);
+            snprintf(buf, sizeof(buf), "%*d ", w, i + 1);
             put_str(buf);
+#if FEATURE_GIT
+            int git_changed = git_settings.enabled && gitdiff_line_changed(i + 1);
+#else
+            int git_changed = 0;
+#endif
+            if (git_changed) {
+                /* "M" as in `git status --short` — a line changed since
+                 * HEAD. Distinct from the plain "~" separator on other
+                 * lines so it doesn't just blend into the margin. */
+                plat_set_color(PLAT_COLOR_GIT_CHANGED);
+                put_str("M");
+                plat_set_color(PLAT_COLOR_DEFAULT);
+            } else {
+                put_str("~");
+            }
+            put_str(" ");
         }
 
 #if FEATURE_SELECTION
@@ -260,6 +280,9 @@ int save_current() {
     }
     fclose(out);
     modified = 0;
+#if FEATURE_GIT
+    if (git_settings.enabled) gitdiff_refresh(current_file);
+#endif
     return 1;
 }
 
@@ -330,6 +353,10 @@ int main(int argc, char *argv[]) {
         }
         count = 1;
     }
+
+#if FEATURE_GIT
+    if (git_settings.enabled) gitdiff_refresh(current_file);
+#endif
 
     if (!plat_init()) {
         fprintf(stderr, "tt: failed to init platform\n");

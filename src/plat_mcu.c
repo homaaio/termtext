@@ -18,6 +18,7 @@
  * not something a platform stub alone can solve.
  */
 
+#include <stddef.h>
 #include "platform.h"
 
 /* TODO: pull in the SDK and display library, e.g.:
@@ -81,8 +82,11 @@ void plat_set_color(int color) {
     /* TODO (FEATURE_HIGHLIGHT / FEATURE_BRACKETS): store color and use it
      * in plat_putc when choosing the glyph color, e.g. via a
      * PLAT_COLOR_* -> RGB565 table. Remember to also cover
-     * PLAT_COLOR_ESCAPE and PLAT_COLOR_BRACKET_MATCH there if those
-     * modules are enabled for this build. If a module is disabled at
+     * PLAT_COLOR_ESCAPE, PLAT_COLOR_BRACKET_MATCH and
+     * PLAT_COLOR_GIT_CHANGED there if those modules are enabled for
+     * this build (FEATURE_GIT is off by default on mcu — it shells out
+     * to git, which needs a filesystem and a process to spawn). If a
+     * module is disabled at
      * build time (FEATURE_HIGHLIGHT=0 / FEATURE_BRACKETS=0), this
      * function is simply never called with its colors. */
     cur_color = color;

@@ -38,7 +38,8 @@ enum {
     PLAT_COLOR_NUMBER,
     PLAT_COLOR_PREPROC,
     PLAT_COLOR_ESCAPE,       /* escape sequences inside strings/chars, e.g. \n \t \xFF */
-    PLAT_COLOR_BRACKET_MATCH /* the matching partner of the bracket under the cursor */
+    PLAT_COLOR_BRACKET_MATCH, /* the matching partner of the bracket under the cursor */
+    PLAT_COLOR_GIT_CHANGED   /* gutter marker of a line added/changed since HEAD (git module) */
 };
 void plat_set_color(int color);
 

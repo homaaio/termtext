@@ -89,6 +89,7 @@ void plat_set_color(int color) {
         case PLAT_COLOR_PREPROC:       printf("\033[95m"); break;
         case PLAT_COLOR_ESCAPE:        printf("\033[36m"); break;
         case PLAT_COLOR_BRACKET_MATCH: printf("\033[33m"); break;
+        case PLAT_COLOR_GIT_CHANGED:   printf("\033[38;5;208m"); break; /* 256-color orange */
         default:                       printf("\033[39m"); break;
     }
 }

@@ -14,7 +14,8 @@
  *   make tt FEATURE_BRACKETS=0                                        # no smart brackets
  *   make tt FEATURE_FIND=0                                            # no find / find & replace
  *   make tt FEATURE_UNDO=0                                            # no undo
- *   make tt FEATURE_HIGHLIGHT=0 FEATURE_SELECTION=0 FEATURE_BRACKETS=0 FEATURE_FIND=0 FEATURE_UNDO=0 # minimal build (see `make minimal`)
+ *   make tt FEATURE_GIT=0                                             # no git gutter
+ *   make tt FEATURE_HIGHLIGHT=0 FEATURE_SELECTION=0 FEATURE_BRACKETS=0 FEATURE_FIND=0 FEATURE_UNDO=0 FEATURE_GIT=0 # minimal build (see `make minimal`)
  *
  * The values below are what you get building with no parameters
  * (make tt), or opening the project in an IDE that doesn't know about
@@ -40,6 +41,10 @@
 
 #ifndef FEATURE_UNDO
 #define FEATURE_UNDO 1        /* undo (Ctrl+Z): src/undo.c */
+#endif
+
+#ifndef FEATURE_GIT
+#define FEATURE_GIT 1         /* git gutter: highlight lines changed since HEAD: src/gitdiff.c */
 #endif
 
 /*
