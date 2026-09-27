@@ -22,6 +22,10 @@ system at all.
 - **Undo (`Ctrl+Z`)** — reverts typing, deleting, splitting/joining
   lines, cut/paste and find & replace, one action at a time
 - **Go to line (`Ctrl+G`)** — jump straight to a line number
+- **Git gutter** — lines added or changed since the last commit (`HEAD`)
+  are marked with an orange `M` in the line-number margin (in place of
+  the usual `~`); does nothing outside a
+  git repo or if `git` isn't installed
 - **Syntax highlighting** — a lightweight, keywords-and-literals-only
   highlighter for C/C++, Rust, Python and assembly; toggle it on/off in
   settings
@@ -49,6 +53,8 @@ system at all.
     src/brackets.c/h          smart brackets: auto-close + matching-bracket highlight (only built if FEATURE_BRACKETS=1)
     src/find.c/h              find + find & replace (only built if FEATURE_FIND=1)
     src/undo.c/h              undo history (only built if FEATURE_UNDO=1)
+    src/settings_git.c/h       git-gutter on/off setting (only built if FEATURE_GIT=1)
+    src/gitdiff.c/h           git gutter: diff-against-HEAD line tracking (only built if FEATURE_GIT=1)
     src/version.h             version string
     src/platform.h            platform interface (plat_*), including the optional OS clipboard hooks
     src/plat_unix.c           Linux/macOS implementation (termios + ANSI); OS clipboard via wl-copy/xclip/xsel/pbcopy, whichever is installed
@@ -80,18 +86,20 @@ the binary:
     make tt FEATURE_BRACKETS=0                        # no smart brackets
     make tt FEATURE_FIND=0                            # no find / find & replace
     make tt FEATURE_UNDO=0                            # no undo
+    make tt FEATURE_GIT=0                             # no git gutter
     make minimal                                      # all modules off — same as above combined
     make tiny                                         # minimal + -Os + dead-code stripping
 
 Feature flags default to `1` (see `src/config.h`) and are passed to the
 compiler with `-D`, so `#if FEATURE_HIGHLIGHT` / `#if FEATURE_SELECTION`
-/ `#if FEATURE_BRACKETS` / `#if FEATURE_FIND` / `#if FEATURE_UNDO` blocks
-compile away cleanly on either side. On this machine, a release build of
+/ `#if FEATURE_BRACKETS` / `#if FEATURE_FIND` / `#if FEATURE_UNDO` /
+`#if FEATURE_GIT` blocks compile away cleanly on either side. On this
+machine, a release build of
 `tt` came out at roughly:
 
 | Build             | Size (unix, gcc -O2) |
 |-------------------|-----------------------|
-| `make unix` (full)| ~55 KB |
+| `make unix` (full)| ~56 KB |
 | `make minimal`    | ~31 KB |
 | `make tiny`        | ~18 KB |
 
@@ -189,6 +197,7 @@ Settings are stored in `~/.config/tt/settings.conf` (or
 | `cursor_blink` | `true`/`false`  | `true`  | Blinking terminal cursor |
 | `highlight`    | `true`/`false`  | `true`  | Syntax highlighting on/off (only present if built with `FEATURE_HIGHLIGHT=1`) |
 | `smart_brackets` | `true`/`false` | `true` | Auto-close bracket/quote pairs + matching-bracket highlight (only present if built with `FEATURE_BRACKETS=1`) |
+| `git_gutter`   | `true`/`false`  | `true`  | Orange `M` line-number marker for lines changed since `HEAD` (only present if built with `FEATURE_GIT=1`) |
 
 Syntax highlighting is picked per file by its extension (`.c/.h/.cpp/.hpp`
 → C/C++, `.rs` → Rust, `.py` → Python, `.s/.asm` → assembly); anything
@@ -236,6 +245,23 @@ oldest steps are dropped, so undo depth is bounded rather than growing
 with the file. There's no redo (a `Ctrl+Z` that's gone too far can't be
 brought back yet).
 
+## Git gutter
+
+`FEATURE_GIT` (`src/gitdiff.c/h` + `src/settings_git.c/h`) replaces the
+usual `~` line-number-margin marker with an orange `M` — as in `git
+status --short` — for every line that's been added or changed since the
+last commit; unchanged lines keep the plain `~`. Same idea as VS Code's
+the separate "deleted lines nearby" indicator. It shells out to the
+system's `git` (`git show`, `git diff --no-index`) rather than bundling a
+diff engine; if `git` isn't installed, or the file isn't inside a git
+repo, or it's a brand-new untracked file (in which case every line shows
+as changed, which is correct), it degrades gracefully rather than
+erroring. The comparison is against the editor's current in-memory
+buffer, not just what's on disk, so it accounts for edits you haven't
+saved yet — but it's only recomputed when a file is opened and right
+after each save, not on every keystroke, since spawning `git` that often
+would make typing feel laggy. Toggle it with the `git_gutter` setting.
+
 ## Running without an OS
 
 termtext's core (`main.c`, `settings.c`, `highlight.c`, `selection.c`,
@@ -270,11 +296,13 @@ from you. What it already gives you:
   real hardware access belongs (SPI/display init, GPIO setup, character
   drawing, button debouncing).
 - `plat_set_color()` wired in as a hook: fill in a `PLAT_COLOR_*` → RGB
-  color table (don't forget `PLAT_COLOR_ESCAPE` and
-  `PLAT_COLOR_BRACKET_MATCH` alongside the syntax-highlighting colors,
+  color table (don't forget `PLAT_COLOR_ESCAPE`, `PLAT_COLOR_BRACKET_MATCH`
+  and `PLAT_COLOR_GIT_CHANGED` alongside the syntax-highlighting colors,
   if those modules are enabled) and use it in `plat_putc()` if you want
   highlighting on the device (or leave it a no-op and build with
-  `FEATURE_HIGHLIGHT=0 FEATURE_BRACKETS=0`).
+  `FEATURE_HIGHLIGHT=0 FEATURE_BRACKETS=0`). `FEATURE_GIT` is always off
+  on `plat_mcu.c` — it shells out to `git`, which needs a filesystem and
+  a process to spawn, neither of which a bare-metal target has.
 - A comment at `BTN_ENTER` sketching how to add a "Shift" equivalent
   (e.g. a long-press) if you want selection on a buttons-only device —
   otherwise build with `FEATURE_SELECTION=0` and skip it.
@@ -302,7 +330,7 @@ To bring up a real port:
    `main.c` accordingly if you don't have a real filesystem.
 5. Build with the modules you actually want (`FEATURE_HIGHLIGHT`,
    `FEATURE_SELECTION`, `FEATURE_BRACKETS`, `FEATURE_FIND`,
-   `FEATURE_UNDO`) — see "Modules and binary
+   `FEATURE_UNDO`; leave `FEATURE_GIT` off, see above) — see "Modules and binary
    size" — since flash space is usually at more of a premium on a
    microcontroller than on a PC. `make mcu` builds with all of them off as
    a sane starting point.
@@ -329,3 +357,9 @@ implement is listed there with a one-line comment each.
 - Undo has no redo counterpart, and history is capped at `UNDO_MAX`
   steps (default 300) — very old steps age out on a long editing session.
 - `plat_mcu.c` is a template, not a tested driver for any specific board.
+- The git gutter only refreshes on file open and after a save, not on
+  every keystroke — so it can lag behind unsaved edits until you save.
+  It also uses two fixed hidden temp files per directory
+  (`.tt.gitdiff.old.tmp`/`.tt.gitdiff.new.tmp`), so two termtext
+  instances editing files in the same directory at the exact same
+  moment could momentarily clobber each other's diff.
