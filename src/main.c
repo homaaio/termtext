@@ -268,6 +268,19 @@ void draw(int cx, int cy, int offset, const char *filename) {
     plat_flush();
 }
 
+/* Recomputes the scroll offset for the current cursor position (cy/cx
+ * are the file-scope cursor globals) and re-reads the terminal size.
+ * Shared by the main loop and the interactive Find prompt below, so
+ * jumping to a match that's off-screen scrolls the view the same way a
+ * normal cursor move would. */
+static void sync_view(int *offset) {
+    plat_get_size(&term_rows, &term_cols);
+    int len = strlen(lines[cy]);
+    if (cx > len) cx = len;
+    if (cy < *offset) *offset = cy;
+    if (cy >= *offset + term_rows - 2) *offset = cy - term_rows + 3;
+}
+
 int save_current() {
     FILE *out = fopen(current_file, "w");
     if (out == NULL) {
@@ -368,11 +381,8 @@ int main(int argc, char *argv[]) {
     int quit_pending = 0; /* set after a first Ctrl+Q on an unsaved file; needs a second, immediate Ctrl+Q to actually quit */
 
     while (running) {
-        plat_get_size(&term_rows, &term_cols);
+        sync_view(&offset);
         int len = strlen(lines[cy]);
-        if (cx > len) cx = len;
-        if (cy < offset) offset = cy;
-        if (cy >= offset + term_rows - 2) offset = cy - term_rows + 3;
         draw(cx, cy, offset, current_file);
 
         int c = plat_read_key();
@@ -520,14 +530,53 @@ int main(int argc, char *argv[]) {
             if (offset > 0) offset--;
 #if FEATURE_FIND
         } else if (c == 6) {
-            /* Ctrl+F — find. Empty input reuses the last search query. */
+            /* Ctrl+F — interactive find. The query prompt stays open
+             * while you search: Up/Down jump to the previous/next match
+             * right away, without closing the prompt and pressing
+             * Ctrl+F again to repeat the same query. Opens pre-filled
+             * with the last search so Up/Down works immediately. Enter
+             * or Esc closes the prompt; the cursor stays wherever the
+             * last match left it. */
             char query[128];
-            if (prompt("Find: ", query, sizeof(query))) {
-                const char *q = query[0] ? query : find_get_last();
-                if (q != NULL && q[0]) {
-                    find_set_last(q);
-                    set_status(find_next(q, &cy, &cx, 1) ? "Found" : "Not found");
+            const char *seed = find_get_last();
+            snprintf(query, sizeof(query), "%s", seed != NULL ? seed : "");
+            int qlen = (int)strlen(query);
+            int have_match = 0;
+            while (1) {
+                char label[48];
+                snprintf(label, sizeof(label), "Find (up/down: next/prev): ");
+                plat_clear_line(term_rows);
+                plat_move_cursor(term_rows, 1);
+                put_str(label);
+                put_str(query);
+                plat_flush();
+
+                int k = plat_read_key();
+                if (k == '\r' || k == '\n') {
+                    /* Enter: same as the old Ctrl+F — jump to the next
+                     * match from here, same as pressing Down would. */
+                    if (query[0]) have_match = find_next(query, &cy, &cx, 1);
+                    break;
                 }
+                if (k == PLAT_KEY_ESC) break;
+                if ((k == 127 || k == 8) && qlen > 0) {
+                    query[--qlen] = 0;
+                } else if (k == PLAT_KEY_DOWN && query[0]) {
+                    have_match = find_next(query, &cy, &cx, 1);
+                    sync_view(&offset);
+                    draw(cx, cy, offset, current_file);
+                } else if (k == PLAT_KEY_UP && query[0]) {
+                    have_match = find_prev(query, &cy, &cx, 1);
+                    sync_view(&offset);
+                    draw(cx, cy, offset, current_file);
+                } else if (k >= 32 && k != 127 && qlen < (int)sizeof(query) - 1) {
+                    query[qlen++] = k;
+                    query[qlen] = 0;
+                }
+            }
+            if (query[0]) {
+                find_set_last(query);
+                set_status(have_match ? "Found" : "Not found");
             }
         } else if (c == 8) {
             /* Ctrl+H — find & replace, built on the same find_next() /

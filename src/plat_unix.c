@@ -4,6 +4,7 @@
 #include <termios.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <sys/select.h>
 #include "platform.h"
 #include "settings.h"
 
@@ -101,22 +102,69 @@ void plat_flush(void) {
     fflush(stdout);
 }
 
+/* Raw read() on the fd, NOT getchar(): stdio would slurp a whole
+ * escape sequence into its own buffer on the first call, and select()
+ * on the fd would then wrongly report "nothing pending". Blocks until
+ * a byte arrives; returns EOF on end of input. */
+static int read_byte(void) {
+    unsigned char b;
+    ssize_t n = read(STDIN_FILENO, &b, 1);
+    return n == 1 ? (int)b : EOF;
+}
+
+/* Reads one more byte of a possible escape sequence, but gives up after
+ * ms milliseconds instead of blocking forever. A real arrow/function-key
+ * sequence arrives as one burst (all its bytes already queued by the
+ * time we get here), while a lone press of the Escape key sends just
+ * the single 0x1b byte and nothing else — so "nothing shows up within
+ * ms" reliably means "that really was just Escape". Returns -1 on
+ * timeout. */
+static int read_byte_timeout(int ms) {
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(STDIN_FILENO, &fds);
+    struct timeval tv;
+    tv.tv_sec = ms / 1000;
+    tv.tv_usec = (ms % 1000) * 1000;
+    int r = select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv);
+    if (r <= 0) return -1;
+    return read_byte();
+}
+
 int plat_read_key(void) {
-    int c = getchar();
+    int c = read_byte();
     if (c == PLAT_KEY_ESC) {
-        int c1 = getchar();
-        if (c1 != '[') return PLAT_KEY_ESC;
-        int c2 = getchar();
+        /* Raw mode blocks on getchar() with no timeout (VMIN=1, VTIME=0
+         * from cfmakeraw), so reading the rest of an escape sequence
+         * with plain getchar() used to hang here on a lone Escape
+         * keypress — waiting for a second byte that would never come,
+         * then misreading whatever key came next as part of the
+         * sequence instead of handling it normally (e.g. Escape not
+         * cancelling the Ctrl+O "Save as" prompt). read_byte_timeout()
+         * fixes that: no more bytes within 50ms means it really was
+         * just Escape. */
+        int c1 = read_byte_timeout(50);
+        if (c1 == -1 || c1 != '[') return PLAT_KEY_ESC;
+        int c2 = read_byte_timeout(50);
+        if (c2 == -1) return PLAT_KEY_ESC;
         if (c2 == 'A') return PLAT_KEY_UP;
         if (c2 == 'B') return PLAT_KEY_DOWN;
         if (c2 == 'C') return PLAT_KEY_RIGHT;
         if (c2 == 'D') return PLAT_KEY_LEFT;
+        /* rxvt/urxvt-style shift-arrows: CSI a/b/c/d (lowercase, no
+         * leading "1;2" modifier form) — some non-xterm terminals send
+         * this instead of the CSI-1;2-<letter> form below. Accepting
+         * both means Shift+arrow selection works on more terminals. */
+        if (c2 == 'a') return PLAT_KEY_SHIFT_UP;
+        if (c2 == 'b') return PLAT_KEY_SHIFT_DOWN;
+        if (c2 == 'c') return PLAT_KEY_SHIFT_RIGHT;
+        if (c2 == 'd') return PLAT_KEY_SHIFT_LEFT;
         if (c2 == '1') {
             /* CSI 1 ; <mod> <letter> — arrow with a modifier (Shift/Ctrl/...) */
-            int c3 = getchar(); /* ';' */
+            int c3 = read_byte_timeout(50); /* ';' */
             if (c3 == ';') {
-                int mod = getchar();   /* '2' = Shift */
-                int c5  = getchar();   /* A/B/C/D */
+                int mod = read_byte_timeout(50);   /* '2' = Shift */
+                int c5  = read_byte_timeout(50);   /* A/B/C/D */
                 if (mod == '2') {
                     if (c5 == 'A') return PLAT_KEY_SHIFT_UP;
                     if (c5 == 'B') return PLAT_KEY_SHIFT_DOWN;

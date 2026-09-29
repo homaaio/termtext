@@ -20,6 +20,11 @@
  * nothing matches. */
 int find_next(const char *query, int *cy, int *cx, int wrap);
 
+/* Same as find_next(), but searches backward from just before the
+ * cursor position (*cy, *cx) — used to jump to the previous match
+ * without retyping the query. */
+int find_prev(const char *query, int *cy, int *cx, int wrap);
+
 /* Replaces every occurrence of query with replacement, across the whole
  * document. Returns the number of replacements made. */
 int find_replace_all(const char *query, const char *replacement);

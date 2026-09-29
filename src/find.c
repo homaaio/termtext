@@ -55,6 +55,37 @@ int find_next(const char *query, int *cy, int *cx, int wrap) {
     return 0;
 }
 
+int find_prev(const char *query, int *cy, int *cx, int wrap) {
+    int qlen = query != NULL ? (int)strlen(query) : 0;
+    if (qlen == 0 || count == 0) return 0;
+
+    int y = *cy;
+    int first_line_limit = *cx - 1; /* on the starting line, only consider matches before the cursor */
+
+    for (int scanned = 0; scanned <= count; scanned++) {
+        if (y < 0) {
+            if (!wrap) return 0;
+            y = count - 1;
+        }
+        char *line = lines[y];
+        int len = (int)strlen(line);
+        int hi = (scanned == 0) ? first_line_limit : len; /* later lines: search the whole line */
+
+        /* Rightmost match at or before column hi is the "previous" one. */
+        int best = -1;
+        for (int i = 0; i + qlen <= len && i <= hi; i++) {
+            if (strncmp(line + i, query, qlen) == 0) best = i;
+        }
+        if (best >= 0) {
+            *cy = y;
+            *cx = best;
+            return 1;
+        }
+        y--;
+    }
+    return 0;
+}
+
 int find_replace_all(const char *query, const char *replacement) {
     if (query == NULL || query[0] == 0 || replacement == NULL) return 0;
 
