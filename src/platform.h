@@ -39,7 +39,8 @@ enum {
     PLAT_COLOR_PREPROC,
     PLAT_COLOR_ESCAPE,       /* escape sequences inside strings/chars, e.g. \n \t \xFF */
     PLAT_COLOR_BRACKET_MATCH, /* the matching partner of the bracket under the cursor */
-    PLAT_COLOR_GIT_CHANGED   /* gutter marker of a line added/changed since HEAD (git module) */
+    PLAT_COLOR_GIT_CHANGED,  /* gutter marker of a line added/changed since HEAD (git module) */
+    PLAT_COLOR_FIND_MATCH    /* occurrences of the last Ctrl+F query (background highlight) */
 };
 void plat_set_color(int color);
 
@@ -79,5 +80,24 @@ char *plat_clipboard_get(void); /* malloc'd (caller frees), or NULL */
 #define PLAT_KEY_SHIFT_DOWN  1011
 #define PLAT_KEY_SHIFT_RIGHT 1012
 #define PLAT_KEY_SHIFT_LEFT  1013
+
+/*
+ * Navigation / editing keys. Same rule as the shift-arrows: a platform
+ * that can't produce a key simply never returns it, and main.c doesn't
+ * need any #ifdef for that.
+ */
+#define PLAT_KEY_HOME        1020
+#define PLAT_KEY_END         1021
+#define PLAT_KEY_PGUP        1022
+#define PLAT_KEY_PGDN        1023
+#define PLAT_KEY_BACKTAB     1024 /* Shift+Tab */
+#define PLAT_KEY_SHIFT_HOME  1025
+#define PLAT_KEY_SHIFT_END   1026
+#define PLAT_KEY_CTRL_RIGHT  1030 /* word jump (Ctrl+Right, also Alt+Right) */
+#define PLAT_KEY_CTRL_LEFT   1031
+#define PLAT_KEY_SHIFT_CTRL_RIGHT 1032 /* word jump + extend selection */
+#define PLAT_KEY_SHIFT_CTRL_LEFT  1033
+#define PLAT_KEY_ALT_UP      1034 /* move line(s) up */
+#define PLAT_KEY_ALT_DOWN    1035 /* move line(s) down */
 
 #endif

@@ -26,6 +26,7 @@
 #include "gitdiff.h"
 #include "settings_git.h"
 #endif
+#include <ctype.h>
 
 char *lines[MAX_LINES];
 int count = 0;
@@ -144,11 +145,66 @@ static void paste_text(const char *text) {
 }
 #endif
 
+/* Word-jump helpers for Ctrl+Left/Right (and Ctrl+Shift+Left/Right to
+ * extend selection by word). Crossing a line boundary lands at the end
+ * of the previous line / start of the next one, same as most editors. */
+static int is_word_char(int c) {
+    return isalnum(c) || c == '_';
+}
+
+static void word_left(int *cy, int *cx) {
+    if (*cx == 0) {
+        if (*cy > 0) { (*cy)--; *cx = (int)strlen(lines[*cy]); }
+        return;
+    }
+    char *s = lines[*cy];
+    int x = *cx;
+    while (x > 0 && !is_word_char((unsigned char)s[x - 1])) x--;
+    while (x > 0 && is_word_char((unsigned char)s[x - 1])) x--;
+    *cx = x;
+}
+
+static void word_right(int *cy, int *cx) {
+    char *s = lines[*cy];
+    int len = (int)strlen(s);
+    if (*cx >= len) {
+        if (*cy < count - 1) { (*cy)++; *cx = 0; }
+        return;
+    }
+    int x = *cx;
+    while (x < len && is_word_char((unsigned char)s[x])) x++;
+    while (x < len && !is_word_char((unsigned char)s[x])) x++;
+    *cx = x;
+}
+
+#if FEATURE_FIND
+/* Marks, in mask[0..len), every column that's part of an occurrence of
+ * the last search query on this line — used by draw() to highlight all
+ * matches, not just the one the cursor happens to be on. */
+static void mark_query_matches(const char *line, int len, char *mask) {
+    memset(mask, 0, len);
+    const char *q = find_get_last();
+    int qlen = q != NULL ? (int)strlen(q) : 0;
+    if (qlen == 0) return;
+    const char *p = line;
+    while ((p = strstr(p, q)) != NULL) {
+        int start = (int)(p - line);
+        for (int i = 0; i < qlen && start + i < len; i++) mask[start + i] = 1;
+        p += qlen;
+    }
+}
+#endif
+
 void draw(int cx, int cy, int offset, const char *filename) {
     char buf[MAX_LEN + 32];
 #if FEATURE_HIGHLIGHT
     static int colors[MAX_LEN];
     int hl_on = hl_settings.enabled && cur_lang != LANG_NONE;
+#endif
+#if FEATURE_FIND
+    static char qmask[MAX_LEN];
+    const char *active_query = find_get_last();
+    int query_on = active_query != NULL && active_query[0] != 0;
 #endif
 #if FEATURE_BRACKETS
     int br_match_found = 0, br_match_y = -1, br_match_x = -1;
@@ -211,20 +267,29 @@ void draw(int cx, int cy, int offset, const char *filename) {
 #else
         int line_has_match = 0;
 #endif
+#if FEATURE_FIND
+        int line_has_query_match = query_on && strstr(lines[i], active_query) != NULL;
+#else
+        int line_has_query_match = 0;
+#endif
 
-        if (i != cy && !line_has_sel && !line_has_match
+        if (i != cy && !line_has_sel && !line_has_match && !line_has_query_match
 #if FEATURE_HIGHLIGHT
             && !hl_on
 #endif
         ) {
-            /* Fast path: no cursor, no selection, no bracket match and
-             * no highlighting on this line — just print it whole. */
+            /* Fast path: no cursor, no selection, no bracket match, no
+             * search-match highlighting and no syntax highlighting on
+             * this line — just print it whole. */
             put_str(lines[i]);
             continue;
         }
 
 #if FEATURE_HIGHLIGHT
         if (hl_on) highlight_line(cur_lang, lines[i], colors, len);
+#endif
+#if FEATURE_FIND
+        if (line_has_query_match) mark_query_matches(lines[i], len, qmask);
 #endif
 
         for (int k = 0; k < len; k++) {
@@ -238,6 +303,11 @@ void draw(int cx, int cy, int offset, const char *filename) {
             int color = hl_on ? colors[k] : PLAT_COLOR_DEFAULT;
 #else
             int color = PLAT_COLOR_DEFAULT;
+#endif
+#if FEATURE_FIND
+            if (line_has_query_match && qmask[k] && !is_sel && !is_cursor) {
+                color = PLAT_COLOR_FIND_MATCH;
+            }
 #endif
 #if FEATURE_BRACKETS
             if (br_match_found && i == br_match_y && k == br_match_x) {
@@ -260,6 +330,13 @@ void draw(int cx, int cy, int offset, const char *filename) {
 
     plat_clear_line(term_rows);
     put_str(status);
+    char posbuf[32];
+    snprintf(posbuf, sizeof(posbuf), "Ln %d, Col %d", cy + 1, cx + 1);
+    int poslen = (int)strlen(posbuf);
+    if (term_cols > poslen) {
+        plat_move_cursor(term_rows, term_cols - poslen + 1);
+        put_str(posbuf);
+    }
 
     /* if line numbers are on — w + 3 ("<number> ~ ") + 1 (1-based) */
     int prefix = settings.show_lines ? w + 3 : 0;
@@ -403,12 +480,16 @@ int main(int argc, char *argv[]) {
 
 #if FEATURE_SELECTION
         int is_shift_move = (c == PLAT_KEY_SHIFT_UP || c == PLAT_KEY_SHIFT_DOWN ||
-                              c == PLAT_KEY_SHIFT_RIGHT || c == PLAT_KEY_SHIFT_LEFT);
+                              c == PLAT_KEY_SHIFT_RIGHT || c == PLAT_KEY_SHIFT_LEFT ||
+                              c == PLAT_KEY_SHIFT_HOME || c == PLAT_KEY_SHIFT_END ||
+                              c == PLAT_KEY_SHIFT_CTRL_LEFT || c == PLAT_KEY_SHIFT_CTRL_RIGHT);
         if (is_shift_move) {
             sel_start_if_needed(cy, cx);
-        } else if (c != 3 && c != 24) {
-            /* Ctrl+C/Ctrl+X handle the current selection themselves —
-             * any other key clears it. */
+        } else if (c != 3 && c != 24 && c != 1 && c != 4 && c != 9 && c != PLAT_KEY_BACKTAB) {
+            /* Ctrl+C/Ctrl+X/Ctrl+D act on the current selection, Ctrl+A
+             * sets its own selection right below, and Tab/Shift+Tab
+             * indent the selected lines — all of them need to see it
+             * still active. Any other key clears it. */
             sel_clear();
         }
         int has_sel = sel_has_range(cy, cx);
@@ -454,8 +535,43 @@ int main(int argc, char *argv[]) {
         } else if (c == 26) {
             /* Ctrl+Z — undo the most recent step */
             set_status(undo_perform(&cy, &cx) ? "Undo" : "Nothing to undo");
+        } else if (c == 18) {
+            /* Ctrl+R — redo the most recently undone step */
+            set_status(redo_perform(&cy, &cx) ? "Redo" : "Nothing to redo");
 #endif
+        } else if (c == 4) {
+            /* Ctrl+D — duplicate the current line, or every line the
+             * selection touches, right below it. */
+            int y0 = cy, y1 = cy;
 #if FEATURE_SELECTION
+            int x0_unused, x1_unused;
+            if (has_sel) sel_range(cy, cx, &y0, &x0_unused, &y1, &x1_unused);
+#endif
+            int n = y1 - y0 + 1;
+            if (count + n <= MAX_LINES) {
+                for (int i = 0; i < n; i++) {
+                    char *copy = strdup(lines[y0 + i]);
+                    if (copy == NULL) break;
+                    int at = y1 + 1 + i;
+                    insert_line(at, copy);
+#if FEATURE_UNDO
+                    undo_record_line_inserted(at, cy, cx);
+#endif
+                }
+                cy = y1 + 1 + (cy - y0);
+                modified = 1;
+#if FEATURE_SELECTION
+                sel_clear();
+#endif
+            }
+#if FEATURE_SELECTION
+        } else if (c == 1) {
+            /* Ctrl+A — select the whole file */
+            sel.active = 1;
+            sel.anchor_y = 0;
+            sel.anchor_x = 0;
+            cy = count - 1;
+            cx = (int)strlen(lines[cy]);
         } else if (c == 3) {
             /* Ctrl+C — copy selection to the OS clipboard, so it's
              * available outside termtext too, with the internal
@@ -524,6 +640,64 @@ int main(int argc, char *argv[]) {
 #endif
         ) {
             if (cx > 0) cx--;
+        } else if (c == PLAT_KEY_HOME
+#if FEATURE_SELECTION
+                   || c == PLAT_KEY_SHIFT_HOME
+#endif
+        ) {
+            cx = 0;
+        } else if (c == PLAT_KEY_END
+#if FEATURE_SELECTION
+                   || c == PLAT_KEY_SHIFT_END
+#endif
+        ) {
+            cx = len;
+        } else if (c == PLAT_KEY_PGUP) {
+            int page = term_rows > 2 ? term_rows - 2 : 1;
+            cy -= page;
+            if (cy < 0) cy = 0;
+        } else if (c == PLAT_KEY_PGDN) {
+            int page = term_rows > 2 ? term_rows - 2 : 1;
+            cy += page;
+            if (cy > count - 1) cy = count - 1;
+        } else if (c == PLAT_KEY_CTRL_LEFT
+#if FEATURE_SELECTION
+                   || c == PLAT_KEY_SHIFT_CTRL_LEFT
+#endif
+        ) {
+            word_left(&cy, &cx);
+        } else if (c == PLAT_KEY_CTRL_RIGHT
+#if FEATURE_SELECTION
+                   || c == PLAT_KEY_SHIFT_CTRL_RIGHT
+#endif
+        ) {
+            word_right(&cy, &cx);
+        } else if (c == PLAT_KEY_ALT_UP) {
+            /* Alt+Up — move the current line up, swapping it with the one above */
+            if (cy > 0) {
+#if FEATURE_UNDO
+                undo_record_line_changed(cy - 1, lines[cy - 1], cy, cx);
+                undo_record_line_changed(cy, lines[cy], cy, cx);
+#endif
+                char *tmp = lines[cy - 1];
+                lines[cy - 1] = lines[cy];
+                lines[cy] = tmp;
+                cy--;
+                modified = 1;
+            }
+        } else if (c == PLAT_KEY_ALT_DOWN) {
+            /* Alt+Down — move the current line down, swapping it with the one below */
+            if (cy < count - 1) {
+#if FEATURE_UNDO
+                undo_record_line_changed(cy, lines[cy], cy, cx);
+                undo_record_line_changed(cy + 1, lines[cy + 1], cy, cx);
+#endif
+                char *tmp = lines[cy];
+                lines[cy] = lines[cy + 1];
+                lines[cy + 1] = tmp;
+                cy++;
+                modified = 1;
+            }
         } else if (c == 5) {
             if (offset + term_rows - 2 < count) offset++;
         } else if (c == 25) {
@@ -642,8 +816,22 @@ int main(int argc, char *argv[]) {
             if (has_sel) sel_delete(&cy, &cx);
 #endif
             if (count >= MAX_LINES) continue;
-            char *rest = strdup(lines[cy] + cx);
+            /* Auto-indent: the new line starts with the same leading
+             * whitespace as the one being split, capped at the split
+             * point itself (so splitting inside the indentation doesn't
+             * indent past where Enter was pressed). Folded into the same
+             * "old text" the OP_INSERTED undo step already captures, so
+             * this doesn't need an undo op of its own. */
+            int indent = 0;
+            if (settings.auto_indent) {
+                while (lines[cy][indent] == ' ' || lines[cy][indent] == '\t') indent++;
+                if (indent > cx) indent = cx;
+            }
+            char *tail = lines[cy] + cx;
+            char *rest = malloc(indent + strlen(tail) + 1);
             if (rest == NULL) continue;
+            memset(rest, ' ', indent);
+            strcpy(rest + indent, tail);
 #if FEATURE_UNDO
             undo_record_line_changed(cy, lines[cy], cy, cx);
 #endif
@@ -653,17 +841,69 @@ int main(int argc, char *argv[]) {
             undo_record_line_inserted(cy + 1, cy, cx);
 #endif
             cy++;
-            cx = 0;
+            cx = indent;
             modified = 1;
-        } else if (c == 9) {
+        } else if (c == 9 || c == PLAT_KEY_BACKTAB) {
 #if FEATURE_SELECTION
-            if (has_sel) sel_delete(&cy, &cx);
+            if (has_sel) {
+                /* Tab/Shift+Tab with an active selection indents or
+                 * unindents every line it touches, instead of typing a
+                 * tab — the usual editor convention for block indent. */
+                int y0, x0, y1, x1;
+                sel_range(cy, cx, &y0, &x0, &y1, &x1);
+                for (int i = y0; i <= y1; i++) {
+                    char *line = lines[i];
+                    int llen = (int)strlen(line);
+                    if (c == 9) {
+                        if (llen + settings.tab_width + 1 > MAX_LEN) continue;
+#if FEATURE_UNDO
+                        undo_record_line_changed(i, line, cy, cx);
 #endif
-            int spaces = settings.smart_tab
-                       ? settings.tab_width - (cx % settings.tab_width)
-                       : settings.tab_width;
-            for (int k = 0; k < spaces; k++) {
-                insert_char(' ');
+                        char *nl = malloc(llen + settings.tab_width + 1);
+                        if (nl != NULL) {
+                            memset(nl, ' ', settings.tab_width);
+                            memcpy(nl + settings.tab_width, line, llen + 1);
+                            free(lines[i]);
+                            lines[i] = nl;
+                        }
+                    } else {
+                        int rm = 0;
+                        while (rm < settings.tab_width && line[rm] == ' ') rm++;
+                        if (rm > 0) {
+#if FEATURE_UNDO
+                            undo_record_line_changed(i, line, cy, cx);
+#endif
+                            memmove(line, line + rm, llen - rm + 1);
+                        }
+                    }
+                }
+                cy = y1;
+                cx = 0;
+                sel_clear();
+                modified = 1;
+            } else
+#endif
+            if (c == 9) {
+                int spaces = settings.smart_tab
+                           ? settings.tab_width - (cx % settings.tab_width)
+                           : settings.tab_width;
+                for (int k = 0; k < spaces; k++) {
+                    insert_char(' ');
+                }
+            } else {
+                /* Shift+Tab with no selection: unindent the current line */
+                char *line = lines[cy];
+                int rm = 0;
+                while (rm < settings.tab_width && line[rm] == ' ') rm++;
+                if (rm > 0) {
+#if FEATURE_UNDO
+                    undo_record_line_changed(cy, line, cy, cx);
+#endif
+                    int llen = (int)strlen(line);
+                    memmove(line, line + rm, llen - rm + 1);
+                    cx = cx >= rm ? cx - rm : 0;
+                    modified = 1;
+                }
             }
         } else if (c >= 32 && c != 127) {
 #if FEATURE_SELECTION

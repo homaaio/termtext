@@ -90,7 +90,8 @@ void plat_set_color(int color) {
         case PLAT_COLOR_ESCAPE:        printf("\033[36m"); break;
         case PLAT_COLOR_BRACKET_MATCH: printf("\033[33m"); break;
         case PLAT_COLOR_GIT_CHANGED:   printf("\033[38;5;208m"); break; /* 256-color orange */
-        default:                       printf("\033[39m"); break;
+        case PLAT_COLOR_FIND_MATCH:    printf("\033[30;43m"); break;    /* black on yellow */
+        default:                       printf("\033[39;49m"); break;    /* also resets the background */
     }
 }
 
@@ -125,12 +126,28 @@ int plat_read_key(void) {
         KEY_EVENT_RECORD *k = &ir.Event.KeyEvent;
         if (!k->bKeyDown) continue;
 
-        int shift = (k->dwControlKeyState & SHIFT_PRESSED) != 0;
+        DWORD st = k->dwControlKeyState;
+        int shift = (st & SHIFT_PRESSED) != 0;
+        int ctrl  = (st & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED)) != 0;
+        int alt   = (st & (LEFT_ALT_PRESSED  | RIGHT_ALT_PRESSED))  != 0;
         switch (k->wVirtualKeyCode) {
-            case VK_UP:    return shift ? PLAT_KEY_SHIFT_UP    : PLAT_KEY_UP;
-            case VK_DOWN:  return shift ? PLAT_KEY_SHIFT_DOWN  : PLAT_KEY_DOWN;
-            case VK_LEFT:  return shift ? PLAT_KEY_SHIFT_LEFT  : PLAT_KEY_LEFT;
-            case VK_RIGHT: return shift ? PLAT_KEY_SHIFT_RIGHT : PLAT_KEY_RIGHT;
+            case VK_UP:
+                if (alt && !ctrl) return PLAT_KEY_ALT_UP;
+                return shift ? PLAT_KEY_SHIFT_UP : PLAT_KEY_UP;
+            case VK_DOWN:
+                if (alt && !ctrl) return PLAT_KEY_ALT_DOWN;
+                return shift ? PLAT_KEY_SHIFT_DOWN : PLAT_KEY_DOWN;
+            case VK_LEFT:
+                if (ctrl || alt) return shift ? PLAT_KEY_SHIFT_CTRL_LEFT : PLAT_KEY_CTRL_LEFT;
+                return shift ? PLAT_KEY_SHIFT_LEFT : PLAT_KEY_LEFT;
+            case VK_RIGHT:
+                if (ctrl || alt) return shift ? PLAT_KEY_SHIFT_CTRL_RIGHT : PLAT_KEY_CTRL_RIGHT;
+                return shift ? PLAT_KEY_SHIFT_RIGHT : PLAT_KEY_RIGHT;
+            case VK_HOME:  return shift ? PLAT_KEY_SHIFT_HOME : PLAT_KEY_HOME;
+            case VK_END:   return shift ? PLAT_KEY_SHIFT_END  : PLAT_KEY_END;
+            case VK_PRIOR: return PLAT_KEY_PGUP;
+            case VK_NEXT:  return PLAT_KEY_PGDN;
+            case VK_TAB:   if (shift) return PLAT_KEY_BACKTAB; break;
             default: break;
         }
         if (k->uChar.AsciiChar != 0) return (unsigned char)k->uChar.AsciiChar;

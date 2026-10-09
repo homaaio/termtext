@@ -82,7 +82,8 @@ void plat_set_color(int color) {
         case PLAT_COLOR_ESCAPE:        printf("\033[36m"); break;
         case PLAT_COLOR_BRACKET_MATCH: printf("\033[33m"); break;
         case PLAT_COLOR_GIT_CHANGED:   printf("\033[38;5;208m"); break; /* 256-color orange */
-        default:                       printf("\033[39m"); break;
+        case PLAT_COLOR_FIND_MATCH:    printf("\033[30;43m"); break;    /* black on yellow */
+        default:                       printf("\033[39;49m"); break;    /* also resets the background */
     }
 }
 
@@ -131,51 +132,102 @@ static int read_byte_timeout(int ms) {
     return read_byte();
 }
 
+/* Turns an xterm-style modifier number (CSI 1;<mod><letter>: mod-1 is a
+ * bitmask, 1=Shift 2=Alt 4=Ctrl) plus an arrow direction (0=Up 1=Down
+ * 2=Right 3=Left) into one of our key codes. */
+static int arrow_key(int dir, int mod) {
+    int bits  = mod > 1 ? mod - 1 : 0;
+    int shift = bits & 1, alt = bits & 2, ctrl = bits & 4;
+    if (dir >= 2 && (ctrl || alt)) {           /* Ctrl/Alt + Left/Right = word jump */
+        if (dir == 2) return shift ? PLAT_KEY_SHIFT_CTRL_RIGHT : PLAT_KEY_CTRL_RIGHT;
+        return shift ? PLAT_KEY_SHIFT_CTRL_LEFT : PLAT_KEY_CTRL_LEFT;
+    }
+    if (dir < 2 && alt && !ctrl) return PLAT_KEY_ALT_UP + dir; /* Alt + Up/Down = move line */
+    return (shift ? PLAT_KEY_SHIFT_UP : PLAT_KEY_UP) + dir;
+}
+
+/* Parses the rest of "ESC [ ..." — digits/';' parameters, then one
+ * final letter. Anything unknown is swallowed whole and reported as
+ * "no key" (0), so e.g. the Delete key (ESC [ 3 ~) no longer leaves a
+ * stray "~" to be typed into the text. */
+static int parse_csi(void) {
+    char params[16];
+    int np = 0, fin;
+    for (;;) {
+        int b = read_byte_timeout(50);
+        if (b == -1) return PLAT_KEY_ESC;
+        if ((b >= '0' && b <= '9') || b == ';') {
+            if (np < (int)sizeof(params) - 1) params[np++] = (char)b;
+            continue;
+        }
+        fin = b;
+        break;
+    }
+    params[np] = 0;
+    int num = atoi(params);
+    char *semi = strchr(params, ';');
+    int mod = semi ? atoi(semi + 1) : 1;
+
+    switch (fin) {
+        case 'A': return arrow_key(0, mod);
+        case 'B': return arrow_key(1, mod);
+        case 'C': return arrow_key(2, mod);
+        case 'D': return arrow_key(3, mod);
+        /* rxvt-style shift-arrows: CSI a/b/c/d (lowercase, no modifier) */
+        case 'a': return PLAT_KEY_SHIFT_UP;
+        case 'b': return PLAT_KEY_SHIFT_DOWN;
+        case 'c': return PLAT_KEY_SHIFT_RIGHT;
+        case 'd': return PLAT_KEY_SHIFT_LEFT;
+        case 'H': return (mod > 1 && ((mod - 1) & 1)) ? PLAT_KEY_SHIFT_HOME : PLAT_KEY_HOME;
+        case 'F': return (mod > 1 && ((mod - 1) & 1)) ? PLAT_KEY_SHIFT_END  : PLAT_KEY_END;
+        case 'Z': return PLAT_KEY_BACKTAB;
+        case '~':
+            if (num == 1 || num == 7) return PLAT_KEY_HOME;
+            if (num == 4 || num == 8) return PLAT_KEY_END;
+            if (num == 5) return PLAT_KEY_PGUP;
+            if (num == 6) return PLAT_KEY_PGDN;
+            return 0;
+        default: return 0;
+    }
+}
+
 int plat_read_key(void) {
     int c = read_byte();
-    if (c == PLAT_KEY_ESC) {
-        /* Raw mode blocks on getchar() with no timeout (VMIN=1, VTIME=0
-         * from cfmakeraw), so reading the rest of an escape sequence
-         * with plain getchar() used to hang here on a lone Escape
-         * keypress — waiting for a second byte that would never come,
-         * then misreading whatever key came next as part of the
-         * sequence instead of handling it normally (e.g. Escape not
-         * cancelling the Ctrl+O "Save as" prompt). read_byte_timeout()
-         * fixes that: no more bytes within 50ms means it really was
-         * just Escape. */
-        int c1 = read_byte_timeout(50);
-        if (c1 == -1 || c1 != '[') return PLAT_KEY_ESC;
+    if (c != PLAT_KEY_ESC) return c; /* Cyrillic letters arrive as two UTF-8 bytes — main.c accounts for this */
+
+    /* Raw mode blocks on read with no timeout (VMIN=1, VTIME=0 from
+     * cfmakeraw), so a lone Escape has to be told apart from the start
+     * of an escape sequence by waiting briefly for a second byte: none
+     * within 50ms means it really was just Escape. */
+    int c1 = read_byte_timeout(50);
+    if (c1 == -1) return PLAT_KEY_ESC;
+    if (c1 == '[') return parse_csi();
+    if (c1 == 'O') {                 /* application-cursor-mode keys: ESC O A.. / ESC O H / ESC O F */
         int c2 = read_byte_timeout(50);
-        if (c2 == -1) return PLAT_KEY_ESC;
-        if (c2 == 'A') return PLAT_KEY_UP;
-        if (c2 == 'B') return PLAT_KEY_DOWN;
-        if (c2 == 'C') return PLAT_KEY_RIGHT;
-        if (c2 == 'D') return PLAT_KEY_LEFT;
-        /* rxvt/urxvt-style shift-arrows: CSI a/b/c/d (lowercase, no
-         * leading "1;2" modifier form) — some non-xterm terminals send
-         * this instead of the CSI-1;2-<letter> form below. Accepting
-         * both means Shift+arrow selection works on more terminals. */
-        if (c2 == 'a') return PLAT_KEY_SHIFT_UP;
-        if (c2 == 'b') return PLAT_KEY_SHIFT_DOWN;
-        if (c2 == 'c') return PLAT_KEY_SHIFT_RIGHT;
-        if (c2 == 'd') return PLAT_KEY_SHIFT_LEFT;
-        if (c2 == '1') {
-            /* CSI 1 ; <mod> <letter> — arrow with a modifier (Shift/Ctrl/...) */
-            int c3 = read_byte_timeout(50); /* ';' */
-            if (c3 == ';') {
-                int mod = read_byte_timeout(50);   /* '2' = Shift */
-                int c5  = read_byte_timeout(50);   /* A/B/C/D */
-                if (mod == '2') {
-                    if (c5 == 'A') return PLAT_KEY_SHIFT_UP;
-                    if (c5 == 'B') return PLAT_KEY_SHIFT_DOWN;
-                    if (c5 == 'C') return PLAT_KEY_SHIFT_RIGHT;
-                    if (c5 == 'D') return PLAT_KEY_SHIFT_LEFT;
-                }
-            }
+        switch (c2) {
+            case 'A': return PLAT_KEY_UP;
+            case 'B': return PLAT_KEY_DOWN;
+            case 'C': return PLAT_KEY_RIGHT;
+            case 'D': return PLAT_KEY_LEFT;
+            case 'H': return PLAT_KEY_HOME;
+            case 'F': return PLAT_KEY_END;
+            case 'c': return PLAT_KEY_CTRL_RIGHT; /* rxvt Ctrl+arrows */
+            case 'd': return PLAT_KEY_CTRL_LEFT;
+            default:  return c2 == -1 ? PLAT_KEY_ESC : 0;
+        }
+    }
+    if (c1 == PLAT_KEY_ESC) {        /* ESC ESC [ A/B — Alt+Up/Down on macOS terminals */
+        if (read_byte_timeout(50) == '[') {
+            int c3 = read_byte_timeout(50);
+            if (c3 == 'A') return PLAT_KEY_ALT_UP;
+            if (c3 == 'B') return PLAT_KEY_ALT_DOWN;
+            return 0;
         }
         return PLAT_KEY_ESC;
     }
-    return c; /* Cyrillic letters arrive as two UTF-8 bytes — main.c accounts for this */
+    if (c1 == 'b') return PLAT_KEY_CTRL_LEFT;  /* Option+Left/Right on macOS Terminal: ESC b / ESC f */
+    if (c1 == 'f') return PLAT_KEY_CTRL_RIGHT;
+    return PLAT_KEY_ESC;
 }
 
 /*

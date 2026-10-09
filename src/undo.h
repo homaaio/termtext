@@ -38,4 +38,11 @@ void undo_next_step(void);
  * 1 if something was undone, 0 if there's no history left. */
 int undo_perform(int *cy, int *cx);
 
+/* Re-applies the step most recently reverted by undo_perform(),
+ * restoring the cursor to where it was when that undo happened.
+ * Returns 1 if something was redone, 0 if there's nothing to redo. Any
+ * new edit (anything recorded via the undo_record_* calls) discards the
+ * redo history, as usual. */
+int redo_perform(int *cy, int *cx);
+
 #endif

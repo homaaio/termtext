@@ -14,6 +14,7 @@ typedef struct {
     int smart_tab;
     int show_lines;
     int cursor_blink;
+    int auto_indent;
 } Settings;
 
 extern Settings settings;

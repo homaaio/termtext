@@ -26,6 +26,7 @@ Settings settings = {
     .smart_tab = 1,
     .show_lines = 1,
     .cursor_blink = 1,
+    .auto_indent = 1,
 };
 
 static void trim(char *s) {
@@ -107,6 +108,7 @@ int settings_save(void) {
     fprintf(f, "smart_tab=%s\n", settings.smart_tab ? "true" : "false");
     fprintf(f, "lines=%s\n", settings.show_lines ? "true" : "false");
     fprintf(f, "cursor_blink=%s\n", settings.cursor_blink ? "true" : "false");
+    fprintf(f, "auto_indent=%s\n", settings.auto_indent ? "true" : "false");
 #if FEATURE_HIGHLIGHT
     hl_settings_write(f);
 #endif
@@ -146,6 +148,12 @@ int settings_set(const char *key, const char *value) {
                                  strcmp(value, "1")    == 0);
         return 1;
     }
+    if (strcmp(key, "auto_indent") == 0) {
+        settings.auto_indent = (strcmp(value, "true") == 0 ||
+                                strcmp(value, "on")   == 0 ||
+                                strcmp(value, "1")    == 0);
+        return 1;
+    }
 #if FEATURE_HIGHLIGHT
     if (hl_settings_set(key, value)) return 1;
 #endif
@@ -175,6 +183,10 @@ int settings_get(const char *key) {
         printf("%s\n", settings.cursor_blink ? "true" : "false");
         return 1;
     }
+    if (strcmp(key, "auto_indent") == 0) {
+        printf("%s\n", settings.auto_indent ? "true" : "false");
+        return 1;
+    }
 #if FEATURE_HIGHLIGHT
     if (hl_settings_get(key)) return 1;
 #endif
@@ -192,6 +204,7 @@ void settings_print_all(void) {
     printf("smart_tab=%s\n", settings.smart_tab ? "true" : "false");
     printf("lines=%s\n", settings.show_lines ? "true" : "false");
     printf("cursor_blink=%s\n", settings.cursor_blink ? "true" : "false");
+    printf("auto_indent=%s\n", settings.auto_indent ? "true" : "false");
 #if FEATURE_HIGHLIGHT
     hl_settings_print_all();
 #endif
