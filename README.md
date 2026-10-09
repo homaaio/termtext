@@ -8,8 +8,15 @@ system at all.
 ## Features
 
 - Open and edit text files
-- Move the cursor with arrow keys
-- Insert, delete, split and join lines
+- Move the cursor with arrow keys, `Home`/`End`, `PgUp`/`PgDn`, and
+  `Ctrl`+Left/Right to jump by word
+- Insert, delete, split and join lines; Enter auto-indents the new line
+  to match the one it split (`auto_indent` setting)
+- `Tab`/`Shift+Tab` indents/unindents — the current line, or every line a
+  selection touches
+- `Ctrl+D` duplicates the current line (or every selected line); `Alt`+Up/Down
+  moves the current line up/down
+- `Ctrl+A` selects the whole file
 - **Text selection** — hold `Shift` and use the arrow keys to select a
   range, then cut/copy/paste it (`Ctrl+X`, `Ctrl+C`, `Ctrl+V`). Cut/copy
   reach the OS clipboard when one is available (so text copied in
@@ -17,10 +24,12 @@ system at all.
   clipboard too, so cut/copy/paste still work on platforms with no OS
   clipboard
 - **Find (`Ctrl+F`) and find & replace (`Ctrl+H`)** — plain-text search,
-  wrapping around the document; find & replace reuses the same search
-  and replaces every match in one go
-- **Undo (`Ctrl+Z`)** — reverts typing, deleting, splitting/joining
-  lines, cut/paste and find & replace, one action at a time
+  wrapping around the document; every occurrence of the active search is
+  highlighted, not just the one under the cursor; find & replace reuses
+  the same search and replaces every match in one go
+- **Undo (`Ctrl+Z`) / Redo (`Ctrl+R`)** — reverts (or replays) typing,
+  deleting, splitting/joining lines, cut/paste and find & replace, one
+  action at a time
 - **Go to line (`Ctrl+G`)** — jump straight to a line number
 - **Git gutter** — lines added or changed since the last commit (`HEAD`)
   are marked with an orange `M` in the line-number margin (in place of
@@ -143,22 +152,33 @@ If the file does not exist, it will be created on first save.
 | Keys | Action |
 |---|---|
 | Arrows | Move cursor |
-| `Shift` + Arrows | Extend selection (`FEATURE_SELECTION`) |
+| `Home` / `End` | Jump to start/end of the line |
+| `PgUp` / `PgDn` | Jump up/down one screenful |
+| `Ctrl` + Left/Right | Jump by word |
+| `Shift` + any of the above | Extend selection (`FEATURE_SELECTION`) |
 | Regular characters | Insert (replaces selection, if any) |
 | Backspace (`DEL`, 0x7F) | Delete character / join with previous line / delete selection |
-| Enter | Split line (replaces selection, if any) |
+| `Tab` | Insert a tab stop, or — with a selection — indent every line it touches |
+| `Shift+Tab` | Unindent the current line, or every line a selection touches |
+| Enter | Split line (replaces selection, if any); auto-indents the new line (`auto_indent` setting) |
+| `Ctrl+D` | Duplicate the current line, or every selected line, right below |
+| `Alt` + Up/Down | Move the current line up/down |
+| `Ctrl+A` | Select the whole file (`FEATURE_SELECTION`) |
 | `Ctrl+C` | Copy selection (OS clipboard if available, always the internal one too) |
 | `Ctrl+X` | Cut selection (same clipboards as `Ctrl+C`) |
 | `Ctrl+V` | Paste — OS clipboard if available and non-empty, else the internal one |
-| `Ctrl+F` | Find (prompts for text; empty input repeats the last search) |
+| `Ctrl+F` | Find. The prompt stays open: `Up`/`Down` jump to the previous/next match without retyping (opens pre-filled with the last query); `Enter` finds next and closes, `Esc` closes. Every match in the file is highlighted while a query is active |
 | `Ctrl+H` | Find & replace (prompts for text, then replacement; replaces every match) |
 | `Ctrl+G` | Go to line (prompts for a line number) |
 | `Ctrl+Z` | Undo the last action (`FEATURE_UNDO`) |
+| `Ctrl+R` | Redo the last undone action (`FEATURE_UNDO`) |
 | `Ctrl+S` | Save |
-| `Ctrl+O` | Save as (prompts for name) |
+| `Ctrl+O` | Save as (prompts for name; `Esc` cancels) |
 | `Ctrl+E` | Scroll down |
 | `Ctrl+Y` | Scroll up |
 | `Ctrl+Q` | Quit — if there are unsaved changes, asks for a second, immediate `Ctrl+Q` to confirm |
+
+The status line's right edge always shows the cursor position as `Ln <row>, Col <column>`.
 
 Typing `(`, `[`, `{`, `"` or `'` auto-inserts its closing partner and
 leaves the cursor between them (`FEATURE_BRACKETS`); typing the closing
@@ -195,6 +215,7 @@ Settings are stored in `~/.config/tt/settings.conf` (or
 | `smart_tab`    | `true`/`false`  | `true`  | Tab fills to the next tab stop instead of always inserting `tab_width` spaces |
 | `lines`        | `true`/`false`  | `true`  | Show line numbers in the left margin |
 | `cursor_blink` | `true`/`false`  | `true`  | Blinking terminal cursor |
+| `auto_indent`  | `true`/`false`  | `true`  | New line from Enter starts with the same indentation as the one it split |
 | `highlight`    | `true`/`false`  | `true`  | Syntax highlighting on/off (only present if built with `FEATURE_HIGHLIGHT=1`) |
 | `smart_brackets` | `true`/`false` | `true` | Auto-close bracket/quote pairs + matching-bracket highlight (only present if built with `FEATURE_BRACKETS=1`) |
 | `git_gutter`   | `true`/`false`  | `true`  | Orange `M` line-number marker for lines changed since `HEAD` (only present if built with `FEATURE_GIT=1`) |
