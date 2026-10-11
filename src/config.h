@@ -57,7 +57,7 @@
  *           EXTRA_CFLAGS="-DMAX_LINES=200 -DMAX_LEN=128"
  */
 #ifndef MAX_LINES
-#define MAX_LINES 1000
+#define MAX_LINES 100000
 #endif
 #ifndef MAX_LEN
 #define MAX_LEN 1024
