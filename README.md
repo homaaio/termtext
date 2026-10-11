@@ -122,7 +122,7 @@ useful for the buffer limits described next:
     make tt EXTRA_CFLAGS="-DMAX_LINES=200 -DMAX_LEN=128"
 
 `MAX_LINES` and `MAX_LEN` (also in `src/config.h`) bound the editor's
-static line buffer; the PC defaults (1000 lines × 1024 bytes) are
+static line buffer; the PC defaults (100000 lines × 1024 bytes) are
 generous, but on a memory-constrained target you'll want to shrink them
 (see below). `UNDO_MAX` (default 300) similarly bounds how many undo
 steps are kept in memory (only relevant if built with `FEATURE_UNDO=1`).
@@ -139,11 +139,15 @@ After that, `tt` is available from any directory.
 
 ## Usage
 
-    tt <file>
+    tt <file> [-c <cmd>]
 
 For example:
 
     tt notes.txt
+    tt main.c -c make
+
+`-c <cmd>` runs `cmd` in the shell after the editor closes (everything
+after `-c` is joined into one command line).
 
 If the file does not exist, it will be created on first save.
 
@@ -340,7 +344,7 @@ To bring up a real port:
    cell, respecting `plat_set_inverse`/`plat_set_color` if used), and
    `plat_read_key` (debounce your buttons and return `PLAT_KEY_*`).
 3. Shrink `MAX_LINES`/`MAX_LEN` in `config.h` (or via `-D`) to fit your
-   RAM budget — the default 1000×1024 is sized for a PC, not a
+   RAM budget — the default 100000×1024 is sized for a PC, not a
    microcontroller. If that's still too much (each open line costs a
    separate heap allocation, `strlen(line)+1` bytes, plus a `char*` slot
    in the `MAX_LINES`-sized pointer array), the next step is replacing
