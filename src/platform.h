@@ -40,7 +40,9 @@ enum {
     PLAT_COLOR_ESCAPE,       /* escape sequences inside strings/chars, e.g. \n \t \xFF */
     PLAT_COLOR_BRACKET_MATCH, /* the matching partner of the bracket under the cursor */
     PLAT_COLOR_GIT_CHANGED,  /* gutter marker of a line added/changed since HEAD (git module) */
-    PLAT_COLOR_FIND_MATCH    /* occurrences of the last Ctrl+F query (background highlight) */
+    PLAT_COLOR_FIND_MATCH,   /* occurrences of the last Ctrl+F query (background highlight) */
+    PLAT_COLOR_FUNCTION,     /* identifier directly followed by '(' (calls and definitions) */
+    PLAT_COLOR_STORAGE       /* static/extern/const/volatile/inline */
 };
 void plat_set_color(int color);
 
