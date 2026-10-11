@@ -28,10 +28,14 @@ Lang highlight_detect_lang(const char *filename) {
 static const char *c_keywords[] = {
     "if", "else", "while", "for", "do", "switch", "case", "break",
     "continue", "return", "goto", "default", "sizeof", "struct", "union",
-    "enum", "typedef", "static", "const", "volatile", "extern", "inline",
+    "enum", "typedef",
     "class", "public", "private", "protected", "namespace", "template",
     "new", "delete", "try", "catch", "throw", "using", "virtual", "this",
     "true", "false", "nullptr", NULL
+};
+/* Storage/qualifier words, colored separately from other keywords. */
+static const char *c_storage[] = {
+    "static", "extern", "const", "volatile", "inline", NULL
 };
 static const char *c_types[] = {
     "int", "char", "float", "double", "long", "short", "unsigned",
@@ -263,10 +267,21 @@ void highlight_line(Lang lang, const char *line, int *out_colors, int len) {
             int start = i;
             while (i < len && is_word_char(line[i])) i++;
             int wlen = i - start;
-            if (word_in_list(line + start, wlen, kw)) {
+            if (lang == LANG_C && word_in_list(line + start, wlen, c_storage)) {
+                for (int k = start; k < i; k++) out_colors[k] = PLAT_COLOR_STORAGE;
+            } else if (word_in_list(line + start, wlen, kw)) {
                 for (int k = start; k < i; k++) out_colors[k] = PLAT_COLOR_KEYWORD;
             } else if (word_in_list(line + start, wlen, ty)) {
                 for (int k = start; k < i; k++) out_colors[k] = PLAT_COLOR_TYPE;
+            } else {
+                /* Variables stay uncolored on purpose. Only an identifier
+                 * directly followed by '(' — a function call or
+                 * definition — gets a color. */
+                int j = i;
+                while (j < len && (line[j] == ' ' || line[j] == '\t')) j++;
+                if (!(j < len && line[j] == '(')) {
+                    for (int k = start; k < i; k++) out_colors[k] = PLAT_COLOR_FUNCTION;
+                }
             }
             continue;
         }
