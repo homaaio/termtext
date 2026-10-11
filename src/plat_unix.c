@@ -73,16 +73,18 @@ void plat_set_inverse(int on) {
 
 void plat_set_color(int color) {
     switch (color) {
-        case PLAT_COLOR_KEYWORD:       printf("\033[94m"); break;
-        case PLAT_COLOR_TYPE:          printf("\033[96m"); break;
+        case PLAT_COLOR_KEYWORD:       printf("\033[38;5;177m"); break;
+        case PLAT_COLOR_TYPE:          printf("\033[38;5;177m"); break;
         case PLAT_COLOR_STRING:        printf("\033[92m"); break;
-        case PLAT_COLOR_COMMENT:       printf("\033[32m"); break;
+        case PLAT_COLOR_COMMENT:       printf("\033[38;5;243m"); break;
         case PLAT_COLOR_NUMBER:        printf("\033[93m"); break;
         case PLAT_COLOR_PREPROC:       printf("\033[95m"); break;
         case PLAT_COLOR_ESCAPE:        printf("\033[36m"); break;
         case PLAT_COLOR_BRACKET_MATCH: printf("\033[33m"); break;
         case PLAT_COLOR_GIT_CHANGED:   printf("\033[38;5;208m"); break; /* 256-color orange */
         case PLAT_COLOR_FIND_MATCH:    printf("\033[30;43m"); break;    /* black on yellow */
+        case PLAT_COLOR_FUNCTION:      printf("\033[38;5;75m"); break;  /* 256-color blue */
+        case PLAT_COLOR_STORAGE:       printf("\033[38;5;203m"); break; /* 256-color red */
         default:                       printf("\033[39;49m"); break;    /* also resets the background */
     }
 }
