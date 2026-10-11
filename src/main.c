@@ -38,7 +38,7 @@ int term_cols = 80;
 
 char current_file[256];
 
-char status[64] = "";
+char status[96] = "";
 
 #if FEATURE_HIGHLIGHT
 static Lang cur_lang = LANG_NONE;
@@ -406,12 +406,28 @@ int main(int argc, char *argv[]) {
         printf("Copyright (C) 2026 homaaio\n");
         return 0;
     }
+    /* tt <file> [-c <cmd...>] — cmd (all remaining args joined by
+     * spaces) is run through the shell after the editor closes. */
+    char *after_cmd = NULL;
     if (argc < 2) {
-        fprintf(stderr, "usage: tt <file>\n");
+        fprintf(stderr, "usage: tt <file> [-c <cmd>]\n");
         return 1;
     } else if (argc >= 3) {
-        fprintf(stderr, "can't open 2 and more files\n");
-        return 1;
+        if (strcmp(argv[2], "-c") != 0 || argc < 4) {
+            fprintf(stderr, argc >= 3 && strcmp(argv[2], "-c") == 0
+                    ? "tt: -c needs a command\n"
+                    : "can't open 2 and more files (usage: tt <file> [-c <cmd>])\n");
+            return 1;
+        }
+        size_t total = 1;
+        for (int i = 3; i < argc; i++) total += strlen(argv[i]) + 1;
+        after_cmd = malloc(total);
+        if (after_cmd == NULL) { perror("malloc"); return 1; }
+        after_cmd[0] = 0;
+        for (int i = 3; i < argc; i++) {
+            if (i > 3) strcat(after_cmd, " ");
+            strcat(after_cmd, argv[i]);
+        }
     }
 
     snprintf(current_file, sizeof(current_file), "%s", argv[1]);
@@ -424,7 +440,10 @@ int main(int argc, char *argv[]) {
     if (file != NULL) {
         char buf[MAX_LEN];
         while (fgets(buf, sizeof(buf), file)) {
-            if (count >= MAX_LINES) break;
+            if (count >= MAX_LINES) {
+                set_status("File too long: truncated at MAX_LINES (saving would cut it!)");
+                break;
+            }
             buf[strcspn(buf, "\n")] = 0;
             lines[count] = strdup(buf);
             if (lines[count] == NULL) {
@@ -483,6 +502,10 @@ int main(int argc, char *argv[]) {
                               c == PLAT_KEY_SHIFT_RIGHT || c == PLAT_KEY_SHIFT_LEFT ||
                               c == PLAT_KEY_SHIFT_HOME || c == PLAT_KEY_SHIFT_END ||
                               c == PLAT_KEY_SHIFT_CTRL_LEFT || c == PLAT_KEY_SHIFT_CTRL_RIGHT);
+        /* Must be computed BEFORE the selection is cleared below —
+         * Backspace/Enter/typing/paste replace the selected text, and
+         * they only see it through has_sel. */
+        int has_sel = sel_has_range(cy, cx);
         if (is_shift_move) {
             sel_start_if_needed(cy, cx);
         } else if (c != 3 && c != 24 && c != 1 && c != 4 && c != 9 && c != PLAT_KEY_BACKTAB) {
@@ -492,7 +515,6 @@ int main(int argc, char *argv[]) {
              * still active. Any other key clears it. */
             sel_clear();
         }
-        int has_sel = sel_has_range(cy, cx);
 #endif
 
         if (c == EOF) {
@@ -923,6 +945,12 @@ int main(int argc, char *argv[]) {
 
     for (int i = 0; i < count; i++) {
         free(lines[i]);
+    }
+
+    if (after_cmd != NULL) {
+        int rc = system(after_cmd);
+        (void)rc;
+        free(after_cmd);
     }
 
     return 0;
